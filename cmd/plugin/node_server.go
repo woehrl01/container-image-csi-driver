@@ -38,7 +38,7 @@ func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSv
 		secretStore:           secretStore,
 		asyncImagePullTimeout: asyncImagePullTimeout,
 		asyncImagePuller:      nil,
-		k8smounter: k8smount.New(""),
+		k8smounter:            k8smount.New(""),
 	}
 	if asyncImagePullTimeout >= time.Duration(30*time.Second) {
 		klog.Infof("Starting node server in Async mode with %v timeout", asyncImagePullTimeout)
@@ -57,7 +57,7 @@ type NodeServer struct {
 	secretStore           secret.Store
 	asyncImagePullTimeout time.Duration
 	asyncImagePuller      remoteimageasync.AsyncPuller
-	k8smounter          k8smount.Interface
+	k8smounter            k8smount.Interface
 }
 
 func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (resp *csi.NodePublishVolumeResponse, err error) {
