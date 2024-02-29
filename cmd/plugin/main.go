@@ -61,6 +61,8 @@ var (
 	containerDMountBurst     = flag.Int("containerd-mount-burst", 5, "The burst of containerd mount operations.")
 	containerDUmountBurst    = flag.Int("containerd-umount-burst", 10, "The burst of containerd umount operations.")
 	contaienrDStartupTimeout = flag.Duration("containerd-startup-timeout", 20*time.Second, "The timeout for containerd startup.")
+	asyncImagePullTimeout = flag.Duration("async-pull-timeout", 0,
+		"If positive, specifies duration allotted for async image pulls as measured from pull start time. If zero, negative, less than 30s, or omitted, the caller's timeout (usually kubelet: 2m) is used instead of this value. (additional time helps prevent timeout for larger images or slower image pull conditions)")
 )
 
 func main() {
@@ -143,7 +145,7 @@ func main() {
 		server.Start(*endpoint,
 			NewIdentityServer(driverVersion),
 			nil,
-			NewNodeServer(driver, mounter, criClient, secretStore, *asyncImagePullMount))
+			NewNodeServer(driver, mounter, criClient, secretStore, *asyncImagePullTimeout))
 	case controllerMode:
 		watcher, err := watcher.New(context.Background(), *watcherResyncPeriod)
 		if err != nil {
