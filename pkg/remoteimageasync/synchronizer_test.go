@@ -15,7 +15,7 @@ import (
 func TestAsyncPullErrorReturn(t *testing.T) {
 	ctx, dontCare := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer dontCare()
-	puller := StartAsyncPuller(ctx, 100)
+	puller := StartAsyncPuller(ctx, 100, 10, 10)
 
 	err := pullImage(puller, "nginx:exists", 1, 5, 5)
 	assert.Nil(t, err, "no error should be returned for successful pull")
@@ -32,7 +32,7 @@ func TestAsyncPullErrorReturn(t *testing.T) {
 func TestPullDuration(t *testing.T) {
 	ctx, dontCare := context.WithTimeout(context.TODO(), 5*time.Second) // shut down execution
 	defer dontCare()
-	puller := StartAsyncPuller(ctx, 100)
+	puller := StartAsyncPuller(ctx, 100, 10, 10)
 	var ops atomic.Int32
 
 	durations := []int{1, 2, 3, 4, 6, 7, 8}
@@ -54,7 +54,7 @@ func TestPullDuration(t *testing.T) {
 func TestParallelPull(t *testing.T) {
 	ctx, dontCare := context.WithTimeout(context.TODO(), 3*time.Second)
 	defer dontCare()
-	puller := StartAsyncPuller(ctx, 100)
+	puller := StartAsyncPuller(ctx, 100, 10, 10)
 	var ops atomic.Int32
 
 	imgs := []int{2, 2, 2, 2, 2, 2, 2}
@@ -76,7 +76,7 @@ func TestParallelPull(t *testing.T) {
 func TestSerialResumedSessions(t *testing.T) {
 	ctx, dontCare := context.WithTimeout(context.TODO(), 6*time.Second)
 	defer dontCare()
-	puller := StartAsyncPuller(ctx, 100)
+	puller := StartAsyncPuller(ctx, 100, 10, 10)
 	var success atomic.Int32
 	var notSuccess atomic.Int32
 
@@ -111,7 +111,7 @@ func TestSerialResumedSessions(t *testing.T) {
 func TestParallelResumedSessions(t *testing.T) {
 	ctx, dontCare := context.WithTimeout(context.TODO(), 6*time.Second)
 	defer dontCare()
-	puller := StartAsyncPuller(ctx, 100)
+	puller := StartAsyncPuller(ctx, 100, 10, 10)
 	var success atomic.Int32
 	var notSuccess atomic.Int32
 

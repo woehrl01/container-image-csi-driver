@@ -51,8 +51,6 @@ var (
 	enableCache = flag.Bool("enable-daemon-image-credential-cache", true,
 		"Whether to save contents of imagepullsecrets of the daemon ServiceAccount in memory. "+
 			"If set to false, secrets will be fetched from the API server on every image pull.")
-	asyncImagePullMount = flag.Bool("async-pull-mount", false,
-		"Whether to pull images asynchronously (helps prevent timeout for larger images)")
 	watcherResyncPeriod      = flag.Duration("watcher-resync-period", 30*time.Minute, "The resync period of the pvc watcher.")
 	mode                     = flag.String("mode", "", "The mode of the driver. Valid values are: node, controller")
 	nodePluginSA             = flag.String("node-plugin-sa", "csi-image-warm-metal", "The name of the ServiceAccount used by the node plugin.")
@@ -63,6 +61,9 @@ var (
 	contaienrDStartupTimeout = flag.Duration("containerd-startup-timeout", 20*time.Second, "The timeout for containerd startup.")
 	asyncImagePullTimeout    = flag.Duration("async-pull-timeout", 0,
 		"If positive, specifies duration allotted for async image pulls as measured from pull start time. If zero, negative, less than 30s, or omitted, the caller's timeout (usually kubelet: 2m) is used instead of this value. (additional time helps prevent timeout for larger images or slower image pull conditions)")
+	asyncRateLimit   = flag.Int("async-pull-rate-limit", 100, "The rate limit of async image pull operations per second.")
+	asyncRateBurst   = flag.Int("async-rate-burst", 100, "The burst of async image pull operations.")
+	asyncChannelSize = flag.Int("async-pull-burst-limit", 100, "The size of the async image pull channel.")
 )
 
 func main() {
@@ -145,7 +146,12 @@ func main() {
 		server.Start(*endpoint,
 			NewIdentityServer(driverVersion),
 			nil,
-			NewNodeServer(driver, mounter, criClient, secretStore, *asyncImagePullTimeout))
+			NewNodeServer(driver, mounter, criClient, secretStore, &Options{
+				AsyncImagePullTimeout: *asyncImagePullTimeout,
+				AsyncCannelSize:       *asyncChannelSize,
+				AsyncRateLimit:        *asyncRateLimit,
+				AsyncRateBurst:        *asyncRateBurst,
+			}))
 	case controllerMode:
 		watcher, err := watcher.New(context.Background(), *watcherResyncPeriod)
 		if err != nil {

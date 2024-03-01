@@ -7,16 +7,19 @@ import (
 	"time"
 
 	"github.com/warm-metal/container-image-csi-driver/pkg/remoteimage"
+	"golang.org/x/time/rate"
 	"k8s.io/klog/v2"
 )
 
 // sessionChanDepth : 100 - must give lots of buffer to ensure no deadlock or dropped requests
-func StartAsyncPuller(ctx context.Context, sessionChanDepth int) AsyncPuller {
+func StartAsyncPuller(ctx context.Context, sessionChanDepth int, ratelimit int, ratelimitburst int) AsyncPuller {
 	klog.Infof("%s.StartAsyncPuller(): starting async puller", prefix)
 	sessionChan := make(chan *PullSession, sessionChanDepth)
 	async := getSynchronizer(
 		ctx,
 		sessionChan,
+		ratelimit,
+		ratelimitburst,
 	)
 	completedFunc := func(ses *PullSession) { // remove session from session map (since no longer active for continuation)
 		async.mutex.Lock()
@@ -33,6 +36,8 @@ func StartAsyncPuller(ctx context.Context, sessionChanDepth int) AsyncPuller {
 func getSynchronizer(
 	ctx context.Context,
 	sessionChan chan *PullSession,
+	ratelimit int,
+	ratelimitburst int,
 ) synchronizer {
 	if cap(sessionChan) < 50 {
 		klog.Fatalf("%s.getSynchronizer(): session channel must have capacity to buffer events, minimum of 50 is required", prefix)
@@ -42,15 +47,30 @@ func getSynchronizer(
 		mutex:      &sync.Mutex{},
 		sessions:   sessionChan,
 		ctx:        ctx,
+		ratelimit:  rate.NewLimiter(rate.Limit(ratelimit), ratelimitburst),
 	}
 }
 
 func (s synchronizer) StartPull(image string, puller remoteimage.Puller, asyncPullTimeout time.Duration) (ses *PullSession, err error) {
 	klog.V(2).Infof("%s.StartPull(): start pull: asked to pull image %s", prefix, image)
+
 	s.mutex.Lock() // lock mutex, no blocking sends/receives inside mutex
 	defer s.mutex.Unlock()
 	ses, ok := s.sessionMap[image] // try get session
 	if !ok {                       // if no session, create session
+		// rate limit
+		r := s.ratelimit.Reserve()
+		if !r.OK() {
+			err := fmt.Errorf("%s.StartPull(): error reserving rate limit for %s, cannot start pull at this time", prefix, image)
+			klog.V(2).Info(err.Error())
+			return nil, err
+		}
+		if r.Delay() > 0 {
+			err := fmt.Errorf("%s.StartPull(): rate limit exceeded, cannot start pull for %s at this time", prefix, image)
+			klog.V(2).Info(err.Error())
+			return nil, err
+		}
+
 		ses = &PullSession{
 			puller:     puller,
 			timeout:    asyncPullTimeout,

@@ -30,19 +30,26 @@ const (
 
 type ImagePullStatus int
 
-func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSvc cri.ImageServiceClient, secretStore secret.Store, asyncImagePullTimeout time.Duration) *NodeServer {
+type Options struct {
+	AsyncImagePullTimeout time.Duration
+	AsyncCannelSize       int
+	AsyncRateLimit        int
+	AsyncRateBurst        int
+}
+
+func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSvc cri.ImageServiceClient, secretStore secret.Store, o *Options) *NodeServer {
 	ns := NodeServer{
 		DefaultNodeServer:     csicommon.NewDefaultNodeServer(driver),
 		mounter:               mounter,
 		imageSvc:              imageSvc,
 		secretStore:           secretStore,
-		asyncImagePullTimeout: asyncImagePullTimeout,
+		asyncImagePullTimeout: o.AsyncImagePullTimeout,
 		asyncImagePuller:      nil,
 		k8smounter:            k8smount.New(""),
 	}
-	if asyncImagePullTimeout >= time.Duration(30*time.Second) {
+	if o.AsyncImagePullTimeout >= time.Duration(30*time.Second) {
 		klog.Infof("Starting node server in Async mode with %v timeout", asyncImagePullTimeout)
-		ns.asyncImagePuller = remoteimageasync.StartAsyncPuller(context.TODO(), 100)
+		ns.asyncImagePuller = remoteimageasync.StartAsyncPuller(context.TODO(), o.AsyncCannelSize, o.AsyncRateLimit, o.AsyncRateBurst)
 	} else {
 		klog.Info("Starting node server in Sync mode")
 		ns.asyncImagePullTimeout = 0 // set to default value

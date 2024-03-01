@@ -7,6 +7,8 @@ logLevel: 4
 enableDaemonImageCredentialCache:
 enableAsyncPull: false
 asyncPullTimeout: "10m"
+asyncPullRateLimit: 1
+asyncPullBurstLimit: 3
 pullImageSecretForDaemonset:
 
 csiPlugin:
