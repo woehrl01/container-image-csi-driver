@@ -9,6 +9,7 @@ enableAsyncPull: false
 asyncPullTimeout: "10m"
 asyncPullRateLimit: 1
 asyncPullBurstLimit: 3
+asyncChannelSize: 100
 pullImageSecretForDaemonset:
 
 csiPlugin:

@@ -62,8 +62,8 @@ var (
 	asyncImagePullTimeout    = flag.Duration("async-pull-timeout", 0,
 		"If positive, specifies duration allotted for async image pulls as measured from pull start time. If zero, negative, less than 30s, or omitted, the caller's timeout (usually kubelet: 2m) is used instead of this value. (additional time helps prevent timeout for larger images or slower image pull conditions)")
 	asyncRateLimit   = flag.Int("async-pull-rate-limit", 100, "The rate limit of async image pull operations per second.")
-	asyncRateBurst   = flag.Int("async-rate-burst", 100, "The burst of async image pull operations.")
-	asyncChannelSize = flag.Int("async-pull-burst-limit", 100, "The size of the async image pull channel.")
+	asyncRateBurst   = flag.Int("async-pull-burst-limit", 100, "The burst of async image pull operations.")
+	asyncChannelSize = flag.Int("async-channel-size", 100, "The size of the async image pull channel.")
 )
 
 func main() {

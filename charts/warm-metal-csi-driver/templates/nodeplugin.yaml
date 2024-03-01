@@ -68,6 +68,7 @@ spec:
             - --async-pull-timeout={{ .Values.asyncPullTimeout }}
             - --async-pull-rate-limit={{ .Values.asyncPullRateLimit }}
             - --async-pull-burst-limit={{ .Values.asyncPullBurstLimit }}
+            - --async-channel-size={{ .Values.asyncChannelSize }}
             {{- end }}
             {{- if .Values.enableNodeUnregister }}
             {{- end }}
