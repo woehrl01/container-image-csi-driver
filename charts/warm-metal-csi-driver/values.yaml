@@ -45,6 +45,7 @@ csiExternalProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
     tag: v3.5.0
     pullPolicy: IfNotPresent
+
 tolerations: {}
 affinity: {}
 nodeSelector: {}
@@ -57,6 +58,11 @@ podMonitor:
   timeout: 10s
 
 containerd:
+  resources: {}
+  image:
+    repository: "docker.io/warmmetal/containerd"
+    tag: ""
+    pullPolicy: IfNotPresent
   mountRate: 5
   mountBurst: 5
   umountRate: 10

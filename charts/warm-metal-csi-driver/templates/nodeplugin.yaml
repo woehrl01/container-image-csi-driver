@@ -58,10 +58,18 @@ spec:
         - name: containerd
           image: "{{ .Values.containerd.image.repository }}:{{ .Values.containerd.image.tag }}"
           imagePullPolicy: {{ .Values.containerd.image.pullPolicy }}
+          {{- with .Values.containerd.resources }}
+          resources:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            privileged: true
           volumeMounts:
             - mountPath: /var/lib/containerd
+              mountPropagation: Bidirectional
               name: containerd-dir
             - mountPath: /run/containerd
+              mountPropagation: Bidirectional
               name: runtime-socket
         - name: csi-plugin
           args:
@@ -122,7 +130,7 @@ spec:
             - mountPath: {{ .Values.kubeletRoot }}/pods
               mountPropagation: Bidirectional
               name: mountpoint-dir
-            - mountPath: {{ .Values.runtime.socketPath }}
+            - mountPath: /run/containerd
               name: runtime-socket
             - mountPath: {{ .Values.snapshotRoot }}
               mountPropagation: Bidirectional
@@ -153,8 +161,12 @@ spec:
           name: registration-dir
         - hostPath:
             path: /run/warm-metal-containerd
-            type: Directory
+            type: DirectoryOrCreate
           name: runtime-socket
+        - hostPath:
+            path: /var/lib/warm-metal-containerd
+            type: DirectoryOrCreate
+          name: containerd-dir
         {{- if .Values.crioRuntimeRoot }}
         - hostPath:
             path: {{ .Values.crioRuntimeRoot }}
@@ -169,7 +181,7 @@ spec:
         {{- end }}
         - hostPath:
             path: /var/lib/warm-metal-containerd/io.containerd.snapshotter.v1.overlayfs
-            type: Directory
+            type: DirectoryOrCreate
           name: snapshot-root-0
       {{- with .Values.affinity }}
       affinity:
