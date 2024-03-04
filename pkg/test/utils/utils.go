@@ -30,7 +30,7 @@ func (m *MockMounter) Mount(
 }
 
 // Unmount unmounts a specific image
-func (m *MockMounter) Unmount(ctx context.Context, volumeId string, target backend.MountTarget) error {
+func (m *MockMounter) Unmount(ctx context.Context, volumeId string, target backend.MountTarget, force bool) error {
 	if m.Mounted[volumeId] {
 		delete(m.Mounted, volumeId)
 		return nil

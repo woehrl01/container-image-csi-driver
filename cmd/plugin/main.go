@@ -17,6 +17,7 @@ import (
 	"github.com/warm-metal/container-image-csi-driver/pkg/secret"
 	"github.com/warm-metal/container-image-csi-driver/pkg/watcher"
 	csicommon "github.com/warm-metal/csi-drivers/pkg/csi-common"
+	kcri "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -107,6 +108,7 @@ func main() {
 		}
 
 		var mounter backend.Mounter
+		var criClient kcri.ImageServiceClient
 		if len(*runtimeAddr) > 0 {
 			addr, err := url.Parse(*runtimeAddr)
 			if err != nil {
@@ -124,21 +126,27 @@ func main() {
 					UmountBurst:    *containerDUmountBurst,
 					StartupTimeout: *contaienrDStartupTimeout,
 				})
+
+				addr.Scheme = "unix"
+				*runtimeAddr = addr.String()
+				criClient, err = cri.NewRemoteImageServiceContainerd(addr.Path, time.Second)
+				if err != nil {
+					klog.Fatalf(`unable to connect to cri daemon "%s": %s`, *endpoint, err)
+				}
+
 			case criOScheme:
 				mounter = crio.NewMounter(&crio.Options{
 					SocketPath: addr.Path,
 				})
+				addr.Scheme = "unix"
+				*runtimeAddr = addr.String()
+				criClient, err = cri.NewRemoteImageService(*runtimeAddr, time.Second)
+				if err != nil {
+					klog.Fatalf(`unable to connect to cri daemon "%s": %s`, *endpoint, err)
+				}
 			default:
 				klog.Fatalf("unknown container runtime %q", addr.Scheme)
 			}
-
-			addr.Scheme = "unix"
-			*runtimeAddr = addr.String()
-		}
-
-		criClient, err := cri.NewRemoteImageService(*runtimeAddr, time.Second)
-		if err != nil {
-			klog.Fatalf(`unable to connect to cri daemon "%s": %s`, *endpoint, err)
 		}
 
 		secretStore := secret.CreateStoreOrDie(*icpConf, *icpBin, *nodePluginSA, *enableCache)

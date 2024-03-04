@@ -3,6 +3,7 @@ package containerd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +64,10 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie(timeout time.Duration) {
 		}
 
 		for target := range metadata.GetTargets() {
+			if !strings.HasPrefix(string(target), "/") {
+				continue // this is the retain lease of the snapshot
+			}
+
 			if notMount, err := mounter.IsLikelyNotMountPoint(string(target)); err != nil || notMount {
 				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q",
 					key)
@@ -153,7 +158,7 @@ func (s *SnapshotMounter) Mount(
 	return err
 }
 
-func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target backend.MountTarget) error {
+func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target backend.MountTarget, force bool) error {
 	r := s.umountlimiter.Reserve()
 	if !r.OK() {
 		return fmt.Errorf("not able to reserve rate limit")
@@ -163,8 +168,10 @@ func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target b
 	}
 
 	klog.Infof("unmount volume %q at %q", volumeId, target)
-	if err := s.runtime.Unmount(ctx, target); err != nil {
-		return err
+	if err := s.runtime.Unmount(ctx, target, force); err != nil {
+		if !force {
+			return err
+		}
 	}
 
 	s.unrefROSnapshot(ctx, target)

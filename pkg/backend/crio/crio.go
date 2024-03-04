@@ -65,10 +65,12 @@ func (s snapshotMounter) RemoveLease(ctx context.Context, target string) error {
 	return nil
 }
 
-func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget) error {
+func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget, force bool) error {
 	if err := k8smount.New("").Unmount(string(target)); err != nil {
 		klog.Errorf("unable to unmount %q: %s", target, err)
-		return err
+		if !force {
+			return err
+		}
 	}
 
 	return nil

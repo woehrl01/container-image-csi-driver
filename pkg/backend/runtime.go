@@ -16,7 +16,7 @@ type MountTarget string
 // ContainerRuntimeMounter is a container runtime specific interface
 type ContainerRuntimeMounter interface {
 	Mount(ctx context.Context, key SnapshotKey, target MountTarget, ro bool) error
-	Unmount(ctx context.Context, target MountTarget) error
+	Unmount(ctx context.Context, target MountTarget, force bool) error
 
 	// Determines if a local image exists. A false should return if errors arise.
 	ImageExists(ctx context.Context, image docker.Named) bool
@@ -60,7 +60,7 @@ type Mounter interface {
 		ctx context.Context, volumeId string, target MountTarget, image docker.Named, ro bool) (err error)
 
 	// Unmount unmounts a specific image
-	Unmount(ctx context.Context, volumeId string, target MountTarget) error
+	Unmount(ctx context.Context, volumeId string, target MountTarget, force bool) error
 
 	// ImageExists checks if the image already exists on the local machine
 	ImageExists(ctx context.Context, image docker.Named) bool

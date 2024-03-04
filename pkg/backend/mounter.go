@@ -207,9 +207,9 @@ func (s *SnapshotMounter) Mount(
 	return err
 }
 
-func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target MountTarget) error {
+func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target MountTarget, force bool) error {
 	klog.Infof("unmount volume %q at %q", volumeId, target)
-	if err := s.runtime.Unmount(ctx, target); err != nil {
+	if err := s.runtime.Unmount(ctx, target, force); err != nil {
 		return err
 	}
 

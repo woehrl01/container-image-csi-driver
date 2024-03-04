@@ -34,7 +34,7 @@ type Options struct {
 }
 
 func NewMounter(o *Options) backend.Mounter {
-	c, err := containerd.New(o.SocketPath, containerd.WithDefaultNamespace("k8s.io"))
+	c, err := containerd.New(o.SocketPath, containerd.WithDefaultNamespace("warm-metal.tech"))
 	if err != nil {
 		klog.Fatalf("containerd connection is broken because the mounted unix socket somehow does not work,"+
 			"recreate the container may fix: %s", err)
@@ -67,7 +67,7 @@ func (s snapshotMounter) Mount(ctx context.Context, key backend.SnapshotKey, tar
 	return err
 }
 
-func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget) error {
+func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget, force bool) error {
 	if err := mount.UnmountAll(string(target), 0); err != nil {
 		klog.Errorf("fail to unmount %s: %s", target, err)
 		return err
@@ -141,16 +141,30 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 ) error {
 	labels := defaultSnapshotLabels()
 
+	retainLease, err := s.leasesService.Create(ctx, leases.WithRandomID(), leases.WithExpiration(30*time.Minute), leases.WithLabels(defaultSnapshotLabels()))
+	if err != nil {
+		klog.Errorf("unable to create lease: %s", err)
+		return err
+	}
+
 	parent := s.getImageIDOrDieByName(ctx, image)
 
 	klog.Infof("create ro snapshot %q for image %q with metadata %#v", key, image, labels)
-	_, err := s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
+	_, err = s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
 	if err != nil {
 		return err
 	}
 
 	if _, err = s.snapshotter.View(ctx, string(key), parent, snapshots.WithLabels(labels)); err != nil {
 		klog.Errorf("unable to create read-only snapshot %q of image %q: %s", key, image, err)
+	}
+
+	if err := s.leasesService.AddResource(ctx, leases.Lease{ID: retainLease.ID}, leases.Resource{
+		Type: "snapshots/overlayfs",
+		ID:   string(key),
+	}); err != nil {
+		klog.Errorf("unable to add resource %q to retain lease %q: %s", string(key), retainLease.ID, err)
+		return err
 	}
 
 	return err
@@ -320,6 +334,7 @@ func (s snapshotMounter) ListSnapshotsWithFilter(ctx context.Context, filters ..
 			if _, ok := resourceToLeases[r.ID]; !ok {
 				resourceToLeases[r.ID] = make(map[backend.MountTarget]struct{})
 			}
+
 			resourceToLeases[r.ID][backend.MountTarget(l.ID)] = struct{}{}
 		}
 	}

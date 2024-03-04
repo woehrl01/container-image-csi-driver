@@ -150,7 +150,7 @@ func TestNodePublishVolumeAsync(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(target))
+	err = mounter.Unmount(c, volId, backend.MountTarget(target), false)
 	assert.NoError(t, err)
 }
 
@@ -279,7 +279,7 @@ func TestNodePublishVolumeSync(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(target))
+	err = mounter.Unmount(c, volId, backend.MountTarget(target), false)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "not found")
 }
@@ -453,7 +453,7 @@ func TestMetrics(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(targetPath))
+	err = mounter.Unmount(c, volId, backend.MountTarget(targetPath), false)
 	assert.NoError(t, err)
 }
 
