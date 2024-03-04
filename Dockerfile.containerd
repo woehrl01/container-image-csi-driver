@@ -1,0 +1,10 @@
+FROM alpine:3.19
+
+# Install containerd
+RUN apk add --no-cache containerd
+
+# Copy the configuration file
+COPY config.toml /etc/containerd/config.toml
+
+# Start containerd
+CMD ["containerd", "--config", "/etc/containerd/config.toml"]

@@ -55,6 +55,14 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+        - name: containerd
+          image: "{{ .Values.containerd.image.repository }}:{{ .Values.containerd.image.tag }}"
+          imagePullPolicy: {{ .Values.containerd.image.pullPolicy }}
+          volumeMounts:
+            - mountPath: /var/lib/containerd
+              name: containerd-dir
+            - mountPath: /run/containerd
+              name: runtime-socket
         - name: csi-plugin
           args:
             - --endpoint=$(CSI_ENDPOINT)
@@ -144,8 +152,8 @@ spec:
             type: Directory
           name: registration-dir
         - hostPath:
-            path: {{ .Values.runtime.socketPath }}
-            type: Socket
+            path: /run/warm-metal-containerd
+            type: Directory
           name: runtime-socket
         {{- if .Values.crioRuntimeRoot }}
         - hostPath:
@@ -160,7 +168,7 @@ spec:
           name: crio-mount-program
         {{- end }}
         - hostPath:
-            path: {{ .Values.snapshotRoot }}
+            path: /var/lib/warm-metal-containerd/io.containerd.snapshotter.v1.overlayfs
             type: Directory
           name: snapshot-root-0
       {{- with .Values.affinity }}
