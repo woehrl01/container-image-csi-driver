@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/warm-metal/container-image-csi-driver/pkg/remoteimage"
-	"golang.org/x/time/rate"
 )
 
 const prefix = "remoteimageasync"
@@ -28,7 +27,6 @@ type synchronizer struct {
 	mutex      *sync.Mutex             // this exclusively protects the sessionMap
 	sessions   chan *PullSession       // pull activity occurs in puller Go routine when using async mode
 	ctx        context.Context         // top level application context
-	ratelimit  *rate.Limiter
 }
 
 // allows mocking/dependency injection

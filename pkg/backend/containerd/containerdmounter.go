@@ -3,7 +3,6 @@ package containerd
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -64,10 +63,6 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie(timeout time.Duration) {
 		}
 
 		for target := range metadata.GetTargets() {
-			if !strings.HasPrefix(string(target), "/") {
-				continue // this is the retain lease of the snapshot
-			}
-
 			if notMount, err := mounter.IsLikelyNotMountPoint(string(target)); err != nil || notMount {
 				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q",
 					key)

@@ -11,10 +11,12 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/pkg/kmutex"
 	"github.com/containerd/containerd/reference/docker"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/opencontainers/image-spec/identity"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend"
+	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 )
 
@@ -22,6 +24,8 @@ type snapshotMounter struct {
 	snapshotter   snapshots.Snapshotter
 	leasesService leases.Manager
 	cli           *containerd.Client
+	unpackLocker  kmutex.KeyedLocker
+	mountLock     *semaphore.Weighted
 }
 
 type Options struct {
@@ -44,6 +48,8 @@ func NewMounter(o *Options) backend.Mounter {
 		snapshotter:   c.SnapshotService(""),
 		leasesService: c.LeasesService(),
 		cli:           c,
+		unpackLocker:  kmutex.New(),
+		mountLock:     semaphore.NewWeighted(2),
 	}, o)
 }
 
@@ -90,10 +96,19 @@ func (s snapshotMounter) getImageIDOrDieByName(ctx context.Context, image string
 		klog.Fatalf("unable to retrieve local image %q: %s", image, err)
 	}
 
-	if err = localImage.Unpack(ctx, ""); err != nil {
-		klog.Fatalf("unable to unpack image %q: %s", image, err)
+	isUnpacked, err := localImage.IsUnpacked(ctx, "")
+	if err != nil {
+		klog.Fatalf("unable to check if image %q is unpacked: %s", image, err)
 	}
-	klog.Infof("image %q unpacked", image)
+
+	if isUnpacked {
+		klog.Infof("image %q is already unpacked", image)
+	} else {
+		if err = localImage.Unpack(ctx, "", containerd.WithUnpackDuplicationSuppressor(s.unpackLocker)); err != nil {
+			klog.Fatalf("unable to unpack image %q: %s", image, err)
+		}
+		klog.Infof("image %q unpacked", image)
+	}
 
 	diffIDs, err := localImage.RootFS(ctx)
 	if err != nil {
@@ -140,6 +155,13 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 	ctx context.Context, image string, key backend.SnapshotKey, _ backend.SnapshotMetadata,
 ) error {
 	labels := defaultSnapshotLabels()
+
+	err := s.mountLock.Acquire(ctx, 1)
+	if err != nil {
+		klog.Errorf("unable to acquire lock: %s", err)
+		return err
+	}
+	defer s.mountLock.Release(1)
 
 	retainLease, err := s.leasesService.Create(ctx, leases.WithRandomID(), leases.WithExpiration(30*time.Minute), leases.WithLabels(defaultSnapshotLabels()))
 	if err != nil {
