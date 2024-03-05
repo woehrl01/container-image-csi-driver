@@ -86,8 +86,6 @@ spec:
             - --async-pull-burst-limit={{ .Values.asyncPullBurstLimit }}
             - --async-channel-size={{ .Values.asyncChannelSize }}
             {{- end }}
-            {{- if .Values.enableNodeUnregister }}
-            {{- end }}
             - "-v={{ .Values.logLevel }}"
             - "--mode=node"
             {{- if eq .Values.runtime.engine "containerd" }}

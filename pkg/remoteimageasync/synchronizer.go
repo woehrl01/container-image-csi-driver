@@ -53,7 +53,6 @@ func getSynchronizer(
 
 func (s synchronizer) StartPull(image string, puller remoteimage.Puller, asyncPullTimeout time.Duration) (ses *PullSession, err error) {
 	klog.V(2).Infof("%s.StartPull(): start pull: asked to pull image %s", prefix, image)
-
 	s.mutex.Lock() // lock mutex, no blocking sends/receives inside mutex
 	defer s.mutex.Unlock()
 	ses, ok := s.sessionMap[image] // try get session
