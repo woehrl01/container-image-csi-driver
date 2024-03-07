@@ -38,7 +38,7 @@ type Options struct {
 }
 
 func NewMounter(o *Options) backend.Mounter {
-	c, err := containerd.New(o.SocketPath, containerd.WithDefaultNamespace("warm-metal.tech"))
+	c, err := containerd.New(o.SocketPath, containerd.WithDefaultNamespace("k8s.io"))
 	if err != nil {
 		klog.Fatalf("containerd connection is broken because the mounted unix socket somehow does not work,"+
 			"recreate the container may fix: %s", err)

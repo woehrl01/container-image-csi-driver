@@ -58,13 +58,8 @@ podMonitor:
   timeout: 10s
 
 containerd:
-  resources: {}
-  image:
-    repository: "docker.io/warmmetal/containerd"
-    tag: ""
-    pullPolicy: IfNotPresent
-  mountRate: 5
-  mountBurst: 5
-  umountRate: 10
-  umountBurst: 10
+  mountRate: 1
+  mountBurst: 1
+  umountRate: 1
+  umountBurst: 2
   startupTimeout: 20s

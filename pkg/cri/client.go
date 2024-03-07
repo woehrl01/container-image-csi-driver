@@ -40,7 +40,7 @@ func NewRemoteImageService(endpoint string, connectionTimeout time.Duration) (cr
 }
 
 func NewRemoteImageServiceContainerd(endpoint string, connectionTimeout time.Duration) (cri.ImageServiceClient, error) {
-	c, err := containerd.New(endpoint, containerd.WithDefaultNamespace("warm-metal.tech"))
+	c, err := containerd.New(endpoint, containerd.WithDefaultNamespace("k8s.io"))
 	if err != nil {
 		return nil, err
 	}
