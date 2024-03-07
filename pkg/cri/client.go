@@ -83,6 +83,8 @@ func (r *remoteImageServiceContainerd) ImageStatus(ctx context.Context, in *cri.
 }
 
 func (r *remoteImageServiceContainerd) PullImage(ctx context.Context, in *cri.PullImageRequest, opts ...grpc.CallOption) (*cri.PullImageResponse, error) {
+	maxConcurrency := 1
+
 	resolver := docker.NewResolver(docker.ResolverOptions{
 		Authorizer: docker.NewDockerAuthorizer(
 			docker.WithAuthCreds(func(host string) (string, string, error) {
@@ -91,7 +93,13 @@ func (r *remoteImageServiceContainerd) PullImage(ctx context.Context, in *cri.Pu
 		),
 	})
 
-	o, err := r.client.Pull(ctx, in.Image.Image, containerd.WithResolver(resolver), containerd.WithMaxConcurrentDownloads(1), containerd.WithPullUnpack, containerd.WithUnpackOpts([]containerd.UnpackOpt{containerd.WithUnpackDuplicationSuppressor(r.unpackLocker)}))
+	o, err := r.client.Pull(ctx, in.Image.Image,
+		containerd.WithResolver(resolver),
+		containerd.WithMaxConcurrentDownloads(maxConcurrency),
+		containerd.WithPullUnpack,
+		containerd.WithUnpackOpts([]containerd.UnpackOpt{containerd.WithUnpackDuplicationSuppressor(r.unpackLocker)}),
+	)
+
 	if err != nil {
 		return nil, err
 	}

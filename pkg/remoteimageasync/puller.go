@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/warm-metal/container-image-csi-driver/pkg/metrics"
-	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 )
 
@@ -16,9 +15,6 @@ func RunPullerLoop(
 	sessionChan chan *PullSession,
 	completedFunc func(*PullSession),
 ) {
-
-	concurrency := semaphore.NewWeighted(2) // rate limit puller
-
 	go func() {
 		<-ctx.Done()
 		close(sessionChan) // only close this once
@@ -30,12 +26,6 @@ func RunPullerLoop(
 				return
 			}
 			go func() {
-				err := concurrency.Acquire(ctx, 1) // rate limit puller
-				if err != nil {
-					klog.V(2).Infof("%s.RunPullerLoop(): shutting down", prefix)
-					return
-				}
-				defer concurrency.Release(1)
 				klog.V(2).Infof("%s.RunPullerLoop(): asked to pull image %s with timeout %v\n",
 					prefix, ses.ImageWithTag(), ses.timeout)
 				ctxAsyncPullTimeoutOrShutdown, cancelDontCare := context.WithTimeout(ctx, ses.timeout) // combine session timeout and shut down signal into one
@@ -64,7 +54,7 @@ func RunPullerLoop(
 				}
 				close(ses.done) // signal done, all waiters should wake
 				completedFunc(ses)
-				time.Sleep(10 * time.Millisecond) // rate limit puller
+				time.Sleep(500 * time.Millisecond) // rate limit puller
 			}()
 		}
 	}()

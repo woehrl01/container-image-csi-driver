@@ -21,11 +21,11 @@ import (
 )
 
 type snapshotMounter struct {
-	snapshotter   snapshots.Snapshotter
-	leasesService leases.Manager
-	cli           *containerd.Client
-	unpackLocker  kmutex.KeyedLocker
-	mountLock     *semaphore.Weighted
+	snapshotterName string
+	leasesService   leases.Manager
+	cli             *containerd.Client
+	unpackLocker    kmutex.KeyedLocker
+	mountLock       *semaphore.Weighted
 }
 
 type Options struct {
@@ -44,17 +44,22 @@ func NewMounter(o *Options) backend.Mounter {
 			"recreate the container may fix: %s", err)
 	}
 
+	snapshotterName := "overlayfs"
+
 	return NewContainerdMounter(&snapshotMounter{
-		snapshotter:   c.SnapshotService(""),
-		leasesService: c.LeasesService(),
-		cli:           c,
-		unpackLocker:  kmutex.New(),
-		mountLock:     semaphore.NewWeighted(2),
+		snapshotterName: snapshotterName,
+		leasesService:   c.LeasesService(),
+		cli:             c,
+		unpackLocker:    kmutex.New(),
+		mountLock:       semaphore.NewWeighted(2),
 	}, o)
 }
 
 func (s snapshotMounter) Mount(ctx context.Context, key backend.SnapshotKey, target backend.MountTarget, ro bool) error {
-	mounts, err := s.snapshotter.Mounts(ctx, string(key))
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+
+	mounts, err := snapshotter.Mounts(ctx, string(key))
 	if err != nil {
 		klog.Errorf("unable to retrieve mounts of snapshot %q: %s", key, err)
 		return err
@@ -177,12 +182,15 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 		return err
 	}
 
-	if _, err = s.snapshotter.View(ctx, string(key), parent, snapshots.WithLabels(labels)); err != nil {
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+
+	if _, err = snapshotter.View(ctx, string(key), parent, snapshots.WithLabels(labels)); err != nil {
 		klog.Errorf("unable to create read-only snapshot %q of image %q: %s", key, image, err)
 	}
 
 	if err := s.leasesService.AddResource(ctx, leases.Lease{ID: retainLease.ID}, leases.Resource{
-		Type: "snapshots/overlayfs",
+		Type: fmt.Sprintf("snapshots/%s", s.snapshotterName),
 		ID:   string(key),
 	}); err != nil {
 		klog.Errorf("unable to add resource %q to retain lease %q: %s", string(key), retainLease.ID, err)
@@ -195,6 +203,9 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 func (s snapshotMounter) PrepareRWSnapshot(
 	ctx context.Context, image string, key backend.SnapshotKey, _ backend.SnapshotMetadata,
 ) error {
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+
 	labels := defaultSnapshotLabels()
 	parent := s.getImageIDOrDieByName(ctx, image)
 
@@ -204,7 +215,7 @@ func (s snapshotMounter) PrepareRWSnapshot(
 		return err
 	}
 
-	if _, err = s.snapshotter.Prepare(ctx, string(key), parent, snapshots.WithLabels(labels)); err != nil {
+	if _, err = snapshotter.Prepare(ctx, string(key), parent, snapshots.WithLabels(labels)); err != nil {
 		klog.Errorf("unable to create snapshot %q of image %q: %s", key, parent, err)
 	}
 
@@ -214,7 +225,9 @@ func (s snapshotMounter) PrepareRWSnapshot(
 func (s snapshotMounter) FindSnapshot(
 	ctx context.Context, key, parent string, kind snapshots.Kind, labels map[string]string,
 ) (*snapshots.Info, error) {
-	stat, err := s.snapshotter.Stat(ctx, key)
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+	stat, err := snapshotter.Stat(ctx, key)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
 			// this is the expected case of this function, all other are cases are errors
@@ -245,7 +258,7 @@ func (s snapshotMounter) UpdateSnapshotMetadata(
 ) error {
 	if l, ok := leases.FromContext(ctx); ok {
 		err := s.leasesService.AddResource(ctx, leases.Lease{ID: l}, leases.Resource{
-			Type: "snapshots/overlayfs",
+			Type: fmt.Sprintf("snapshots/%s", s.snapshotterName),
 			ID:   string(key),
 		})
 
@@ -266,8 +279,11 @@ func (s snapshotMounter) DestroySnapshot(ctx context.Context, key backend.Snapsh
 }
 
 func (s snapshotMounter) MigrateOldSnapshotFormat(ctx context.Context) error {
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+
 	oldImages := make(map[*snapshots.Info]map[backend.MountTarget]struct{})
-	err := s.snapshotter.Walk(ctx, func(ctx context.Context, info snapshots.Info) error {
+	err := snapshotter.Walk(ctx, func(ctx context.Context, info snapshots.Info) error {
 		targets := make(map[backend.MountTarget]struct{}, len(info.Labels))
 		infoP := &info
 		for k := range info.Labels {
@@ -312,13 +328,13 @@ func (s snapshotMounter) MigrateOldSnapshotFormat(ctx context.Context) error {
 		for target := range targets {
 			s.leasesService.Create(ctx, leases.WithID(string(target)), leases.WithLabels(defaultSnapshotLabels()))
 			s.leasesService.AddResource(ctx, leases.Lease{ID: string(target)}, leases.Resource{
-				Type: "snapshots/overlayfs",
+				Type: fmt.Sprintf("snapshots/%s", s.snapshotterName),
 				ID:   oldImage.Name,
 			})
 			klog.Infof("migrated target %q for snapshot %q by adding lease", target, oldImage.Name)
 		}
 		oldImage.Labels = defaultSnapshotLabels()
-		_, err := s.snapshotter.Update(ctx, *oldImage)
+		_, err := snapshotter.Update(ctx, *oldImage)
 		if err != nil {
 			klog.Errorf("unable to update snapshot %q: %s", oldImage.Name, err)
 			return err
@@ -350,7 +366,7 @@ func (s snapshotMounter) ListSnapshotsWithFilter(ctx context.Context, filters ..
 			return nil, err
 		}
 		for _, r := range res {
-			if (r.Type != "snapshots/overlayfs") || (r.ID == "") {
+			if (r.Type != fmt.Sprintf("snapshots/%s", s.snapshotterName)) || (r.ID == "") {
 				continue
 			}
 			if _, ok := resourceToLeases[r.ID]; !ok {
@@ -361,7 +377,10 @@ func (s snapshotMounter) ListSnapshotsWithFilter(ctx context.Context, filters ..
 		}
 	}
 
-	err = s.snapshotter.Walk(ctx, func(ctx context.Context, info snapshots.Info) error {
+	snapshotter := s.cli.SnapshotService(s.snapshotterName)
+	defer snapshotter.Close()
+
+	err = snapshotter.Walk(ctx, func(ctx context.Context, info snapshots.Info) error {
 		if len(resourceToLeases[info.Name]) == 0 {
 			return nil
 		}
