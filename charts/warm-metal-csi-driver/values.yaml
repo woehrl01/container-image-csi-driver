@@ -60,6 +60,6 @@ podMonitor:
 containerd:
   mountRate: 1
   mountBurst: 1
-  umountRate: 1
-  umountBurst: 2
+  umountRate: 2
+  umountBurst: 10
   startupTimeout: 20s

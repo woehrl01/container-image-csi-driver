@@ -15,7 +15,7 @@ import (
 
 type SnapshotMounter struct {
 	runtime       backend.ContainerRuntimeMounter
-	guard         sync.Mutex
+	guard         *sync.Mutex
 	mountlimiter  *rate.Limiter
 	umountlimiter *rate.Limiter
 }
@@ -27,7 +27,7 @@ func NewContainerdMounter(runtime backend.ContainerRuntimeMounter, o *Options) *
 
 	mounter := &SnapshotMounter{
 		runtime: runtime,
-		guard:   sync.Mutex{},
+		guard:   &sync.Mutex{},
 		// we need to limit the rate of mount and unmount to avoid the system being overwhelmed
 		// because the mount operation is causing way more load than the unmount operation on containerd
 		// we are using different limits for mount and unmount
@@ -95,6 +95,8 @@ func (s *SnapshotMounter) refROSnapshot(
 }
 
 func (s *SnapshotMounter) unrefROSnapshot(ctx context.Context, target backend.MountTarget) {
+	s.guard.Lock()
+	defer s.guard.Unlock()
 	s.runtime.RemoveLease(ctx, string(target))
 }
 
