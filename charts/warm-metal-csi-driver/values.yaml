@@ -61,5 +61,5 @@ containerd:
   mountRate: 1
   mountBurst: 1
   umountRate: 2
-  umountBurst: 10
+  umountBurst: 5
   startupTimeout: 20s
