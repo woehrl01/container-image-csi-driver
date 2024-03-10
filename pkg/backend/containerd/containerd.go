@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/containerd/containerd"
@@ -16,7 +17,6 @@ import (
 	"github.com/containerd/containerd/snapshots"
 	"github.com/opencontainers/image-spec/identity"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend"
-	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 )
 
@@ -25,7 +25,7 @@ type snapshotMounter struct {
 	leasesService   leases.Manager
 	cli             *containerd.Client
 	unpackLocker    kmutex.KeyedLocker
-	mountLock       *semaphore.Weighted
+	mountLock       *sync.Mutex
 }
 
 type Options struct {
@@ -51,11 +51,14 @@ func NewMounter(o *Options) backend.Mounter {
 		leasesService:   c.LeasesService(),
 		cli:             c,
 		unpackLocker:    kmutex.New(),
-		mountLock:       semaphore.NewWeighted(2),
+		mountLock:       &sync.Mutex{},
 	}, o)
 }
 
 func (s snapshotMounter) Mount(ctx context.Context, key backend.SnapshotKey, target backend.MountTarget, ro bool) error {
+	s.mountLock.Lock()
+	defer s.mountLock.Unlock()
+
 	snapshotter := s.cli.SnapshotService(s.snapshotterName)
 	defer snapshotter.Close()
 
@@ -79,6 +82,9 @@ func (s snapshotMounter) Mount(ctx context.Context, key backend.SnapshotKey, tar
 }
 
 func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget, force bool) error {
+	s.mountLock.Lock()
+	defer s.mountLock.Unlock()
+
 	if err := mount.UnmountAll(string(target), 0); err != nil {
 		klog.Errorf("fail to unmount %s: %s", target, err)
 		return err
@@ -159,25 +165,15 @@ func (s snapshotMounter) RemoveLease(ctx context.Context, target string) error {
 func (s snapshotMounter) PrepareReadOnlySnapshot(
 	ctx context.Context, image string, key backend.SnapshotKey, _ backend.SnapshotMetadata,
 ) error {
+	s.mountLock.Lock()
+	defer s.mountLock.Unlock()
+	
 	labels := defaultSnapshotLabels()
-
-	err := s.mountLock.Acquire(ctx, 1)
-	if err != nil {
-		klog.Errorf("unable to acquire lock: %s", err)
-		return err
-	}
-	defer s.mountLock.Release(1)
-
-	retainLease, err := s.leasesService.Create(ctx, leases.WithRandomID(), leases.WithExpiration(30*time.Minute), leases.WithLabels(defaultSnapshotLabels()))
-	if err != nil {
-		klog.Errorf("unable to create lease: %s", err)
-		return err
-	}
 
 	parent := s.getImageIDOrDieByName(ctx, image)
 
 	klog.Infof("create ro snapshot %q for image %q with metadata %#v", key, image, labels)
-	_, err = s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
+	_, err := s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
 	if err != nil {
 		return err
 	}
@@ -189,20 +185,15 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 		klog.Errorf("unable to create read-only snapshot %q of image %q: %s", key, image, err)
 	}
 
-	if err := s.leasesService.AddResource(ctx, leases.Lease{ID: retainLease.ID}, leases.Resource{
-		Type: fmt.Sprintf("snapshots/%s", s.snapshotterName),
-		ID:   string(key),
-	}); err != nil {
-		klog.Errorf("unable to add resource %q to retain lease %q: %s", string(key), retainLease.ID, err)
-		return err
-	}
-
 	return err
 }
 
 func (s snapshotMounter) PrepareRWSnapshot(
 	ctx context.Context, image string, key backend.SnapshotKey, _ backend.SnapshotMetadata,
 ) error {
+	s.mountLock.Lock()
+	defer s.mountLock.Unlock()
+
 	snapshotter := s.cli.SnapshotService(s.snapshotterName)
 	defer snapshotter.Close()
 
