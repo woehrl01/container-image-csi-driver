@@ -54,7 +54,6 @@ func RunPullerLoop(
 				}
 				close(ses.done) // signal done, all waiters should wake
 				completedFunc(ses)
-				time.Sleep(500 * time.Millisecond) // rate limit puller
 			}()
 		}
 	}()

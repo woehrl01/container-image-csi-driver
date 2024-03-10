@@ -167,7 +167,7 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 ) error {
 	s.mountLock.Lock()
 	defer s.mountLock.Unlock()
-	
+
 	labels := defaultSnapshotLabels()
 
 	parent := s.getImageIDOrDieByName(ctx, image)

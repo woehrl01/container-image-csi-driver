@@ -1,8 +1,8 @@
 runtime:
-  engine: buildah
+  engine: containerd
   socketPath: /run/containerd/containerd.sock
 kubeletRoot: /var/lib/kubelet
-snapshotRoot: /var/lib/containers/storage
+snapshotRoot: /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs
 logLevel: 4
 enableDaemonImageCredentialCache:
 enableAsyncPull: false

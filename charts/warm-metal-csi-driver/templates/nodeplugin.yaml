@@ -17,6 +17,9 @@ spec:
       labels:
         {{- include "warm-metal-csi-driver.nodeplugin.labels" . | nindent 8 }}
     spec:
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
       containers:
         - name: node-driver-registrar
           args:
@@ -80,6 +83,8 @@ spec:
             - "--containerd-startup-timeout={{ .Values.containerd.startupTimeout }}"
             {{- end }}
           env:
+            - name: GOMAXPROCS
+              value: "1"
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: CRI_ADDR
@@ -126,6 +131,10 @@ spec:
             - mountPath: {{ .Values.crioMountProgram }}
               name: crio-mount-program
             {{- end }}
+            {{- if eq .Values.runtime.engine "buildah" }}
+            - mountPath: /run/containers/storage
+              name: storagerunroot-dir
+            {{- end }}
       hostNetwork: {{.Values.csiPlugin.hostNetwork}}
       serviceAccountName: {{ include "warm-metal-csi-driver.fullname" . }}-nodeplugin
       volumes:
@@ -159,8 +168,14 @@ spec:
         {{- end }}
         - hostPath:
             path: {{ .Values.snapshotRoot }}
-            type: Directory
+            type: DirectoryOrCreate
           name: snapshot-root-0
+        {{- if eq .Values.runtime.engine "buildah" }}
+        - hostPath:
+            path: /run/containers/storage
+            type: DirectoryOrCreate
+          name: storagerunroot-dir
+        {{- end }}
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
