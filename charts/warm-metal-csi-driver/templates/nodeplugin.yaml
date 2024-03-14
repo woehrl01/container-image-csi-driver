@@ -69,8 +69,6 @@ spec:
             {{- end }}
             {{- if .Values.enableAsyncPull }}
             - --async-pull-timeout={{ .Values.asyncPullTimeout }}
-            - --async-pull-rate-limit={{ .Values.asyncPullRateLimit }}
-            - --async-pull-burst-limit={{ .Values.asyncPullBurstLimit }}
             - --async-channel-size={{ .Values.asyncChannelSize }}
             {{- end }}
             - "-v={{ .Values.logLevel }}"

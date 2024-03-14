@@ -178,7 +178,7 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 				return
 			}
 
-			waitForPullCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			waitForPullCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 
 			if err = n.asyncImagePuller.WaitForPull(session, waitForPullCtx); err != nil {
