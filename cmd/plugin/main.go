@@ -68,8 +68,6 @@ var (
 	containerDMountBurst     = flag.Int("containerd-mount-burst", 5, "The burst of containerd mount operations.")
 	containerDUmountBurst    = flag.Int("containerd-umount-burst", 10, "The burst of containerd umount operations.")
 	contaienrDStartupTimeout = flag.Duration("containerd-startup-timeout", 20*time.Second, "The timeout for containerd startup.")
-	asyncRateLimit           = flag.Int("async-pull-rate-limit", 100, "The rate limit of async image pull operations per second.")
-	asyncRateBurst           = flag.Int("async-pull-burst-limit", 100, "The burst of async image pull operations.")
 	asyncChannelSize         = flag.Int("async-channel-size", 100, "The size of the async image pull channel.")
 	enablePprof              = flag.Bool("enable-pprof", true, "Enable pprof for the driver.")
 )

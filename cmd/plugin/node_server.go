@@ -178,7 +178,10 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 				return
 			}
 
-			if err = n.asyncImagePuller.WaitForPull(session, ctx); err != nil {
+			waitForPullCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+
+			if err = n.asyncImagePuller.WaitForPull(session, waitForPullCtx); err != nil {
 				err = status.Errorf(codes.Aborted, "unable to pull image %q: %s", image, err)
 				metrics.OperationErrorsCount.WithLabelValues("pull-async-wait").Inc()
 				return
