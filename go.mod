@@ -1,6 +1,6 @@
 module github.com/warm-metal/container-image-csi-driver
 
-go 1.19
+go 1.22
 
 require (
 	github.com/BurntSushi/toml v1.3.2
@@ -19,6 +19,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/warm-metal/csi-drivers v0.5.0-alpha.0.0.20210404173852-9ec9cb097dd2
 	golang.org/x/net v0.22.0
+	golang.org/x/sync v0.6.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.61.0
 	k8s.io/api v0.26.5
@@ -187,7 +188,6 @@ require (
 	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225 // indirect
 	golang.org/x/mod v0.15.0 // indirect
 	golang.org/x/oauth2 v0.18.0 // indirect
-	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
