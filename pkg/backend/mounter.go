@@ -131,7 +131,8 @@ func (s *SnapshotMounter) refROSnapshot(
 	return nil
 }
 
-func (s *SnapshotMounter) unrefROSnapshot(ctx context.Context, target MountTarget) (found bool) {
+func (s *SnapshotMounter) unrefROSnapshot(parentCtx context.Context, target MountTarget) (found bool) {
+	ctx := context.WithoutCancel(parentCtx) // we don't want to cancel the unref operation
 	if err := s.guard.Acquire(ctx, 1); err != nil {
 		klog.Fatalf("unable to acquire the lock: %s", err)
 	}

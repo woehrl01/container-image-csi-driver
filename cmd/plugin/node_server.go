@@ -139,15 +139,6 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 		image = req.VolumeContext[ctxKeyImage]
 	}
 
-	// because downloading an preparing an image can take a long time, we need to lock
-	// this is only required for ephemeral volumes, as PVs would already be locked on the volumeid
-	// we are not only locking on the image id, because we have to lock the unmount operation as well
-	// and we don't have the image id there
-	if acquired := n.imageLocks.TryAcquire(image); !acquired {
-		return nil, status.Errorf(codes.Aborted, utils.NamedOperationAlreadyExistsFmt, image)
-	}
-	defer n.imageLocks.Release(image)
-
 	pullAlways := strings.ToLower(req.VolumeContext[ctxKeyPullAlways]) == "true"
 
 	keyring, err := n.secretStore.GetDockerKeyring(ctx, req.Secrets)
@@ -178,10 +169,7 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 				return
 			}
 
-			waitForPullCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
-
-			if err = n.asyncImagePuller.WaitForPull(session, waitForPullCtx); err != nil {
+			if err = n.asyncImagePuller.WaitForPull(session, ctx); err != nil {
 				err = status.Errorf(codes.Aborted, "unable to pull image %q: %s", image, err)
 				metrics.OperationErrorsCount.WithLabelValues("pull-async-wait").Inc()
 				return

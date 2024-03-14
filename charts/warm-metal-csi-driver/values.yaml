@@ -1,14 +1,14 @@
 runtime:
-  engine: buildah
+  engine: containerd
   socketPath: /run/containerd/containerd.sock
 kubeletRoot: /var/lib/kubelet
-snapshotRoot: /var/lib/containers/storage
+snapshotRoot: /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs
 logLevel: 4
 enableDaemonImageCredentialCache:
 enableAsyncPull: false
 asyncPullTimeout: "10m"
 asyncPullRateLimit: 1
-asyncPullBurstLimit: 3
+asyncPullBurstLimit: 1
 asyncChannelSize: 100
 pullImageSecretForDaemonset:
 
@@ -58,8 +58,8 @@ podMonitor:
   timeout: 10s
 
 containerd:
-  mountRate: 1
-  mountBurst: 1
-  umountRate: 1
-  umountBurst: 1
+  mountRate: 5
+  mountBurst: 10
+  umountRate: 10
+  umountBurst: 50
   startupTimeout: 20s

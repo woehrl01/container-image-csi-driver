@@ -75,7 +75,7 @@ func (s snapshotMounter) Mount(_ context.Context, key backend.SnapshotKey, targe
 		mountOpts = append(mountOpts, "ro")
 	}
 
-	err = s.mounter.Mount(mountPoint, string(target), "", mountOpts)
+	err = s.mounter.MountSensitiveWithoutSystemd(mountPoint, string(target), "", mountOpts, []string{})
 	if err != nil {
 		klog.Errorf("unable to bind %q to %q: %s", mountPoint, target, err)
 		return err
