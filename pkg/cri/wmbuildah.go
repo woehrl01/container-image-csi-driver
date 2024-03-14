@@ -10,27 +10,31 @@ import (
 	"github.com/containers/common/libimage"
 	"github.com/containers/image/v5/types"
 	"github.com/containers/storage"
-	"github.com/containers/storage/pkg/reexec"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	cri "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
 )
 
-var (
-	buildAhPullImage = "buildah-pull-image"
-)
-
-func init() {
-	reexec.Register(buildAhPullImage, buildAhPullImageMain)
-}
 type remoteImageServiceBuildah struct {
 	maxConcurrency *semaphore.Weighted
+	store          storage.Store
 }
 
 func NewRemoteImageServiceBuildah(connectionTimeout time.Duration) (cri.ImageServiceClient, error) {
+	storageOptions, err := storage.DefaultStoreOptions()
+	if err != nil {
+		klog.Fatalf("unable to get storage options: %s", err)
+	}
+
+	store, err := storage.GetStore(storageOptions)
+	if err != nil {
+		klog.Fatalf("unable to get storage store: %s", err)
+	}
+
 	return &remoteImageServiceBuildah{
-		maxConcurrency: semaphore.NewWeighted(2),
+		maxConcurrency: semaphore.NewWeighted(1),
+		store:          store,
 	}, nil
 }
 
@@ -84,72 +88,31 @@ func (r *remoteImageServiceBuildah) PullImage(ctx context.Context, in *cri.PullI
 	}
 	defer r.maxConcurrency.Release(1)
 
-	cmd := reexec.Command(buildAhPullImage, in.Image.Image, in.Auth.Username, in.Auth.Password, in.Auth.IdentityToken)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	var id string
-	_, err = fmt.Fscan(stdout, &id)
-	if err != nil {
-		return nil, err
-	}
-
-	err = cmd.Wait()
-	if err != nil {
-		return nil, err
-	}
-	
-	return &cri.PullImageResponse{
-		ImageRef: id,
-	}, nil
-
-}
-
-func buildAhPullImageMain() {
-	flag.Parse()
-	if len(flag.Args()) != 4 {
-		klog.Fatal("usage: buildah-prepare-snapshot <image> <container> <metadata>")
-	}
-
-	storageOptions, err := storage.DefaultStoreOptions()
-	if err != nil {
-		klog.Fatalf("unable to get storage options: %s", err)
-	}
-
-	store, err := storage.GetStore(storageOptions)
-	if err != nil {
-		klog.Fatalf("unable to get storage store: %s", err)
-	}
-
 	systemContext := &types.SystemContext{
 		DockerAuthConfig: &types.DockerAuthConfig{
-			Username:      flag.Arg(1),
-			Password:      flag.Arg(2),
-			IdentityToken: flag.Arg(3),
+			Username:      in.Auth.Username,
+			Password:      in.Auth.Password,
+			IdentityToken: in.Auth.IdentityToken,
 		},
 	}
 
 	options := buildah.PullOptions{
-		Store:         store,
+		Store:         r.store,
 		SystemContext: systemContext,
 		PullPolicy:    buildah.PullAlways,
+		MaxRetries:    0,
 	}
 
-	id, err := buildah.Pull(context.Background(), flag.Arg(0), options)
+	id, err := buildah.Pull(ctx, in.Image.Image, options)
 	if err != nil {
-		klog.Fatalf("unable to pull image %q: %s", flag.Arg(0), err)
+		klog.Errorf("unable to pull image %q: %s", flag.Arg(0), err)
+		return nil, err
 	}
 
-	fmt.Printf("%s\n", id)
+	return &cri.PullImageResponse{
+		ImageRef: id,
+	}, nil
 }
-
 
 func (r *remoteImageServiceBuildah) RemoveImage(ctx context.Context, in *cri.RemoveImageRequest, opts ...grpc.CallOption) (*cri.RemoveImageResponse, error) {
 	return nil, fmt.Errorf("not implemented")

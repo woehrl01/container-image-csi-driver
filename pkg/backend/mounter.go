@@ -3,10 +3,10 @@ package backend
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/containerd/containerd/reference/docker"
+	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 	k8smount "k8s.io/utils/mount"
 )
@@ -14,7 +14,7 @@ import (
 type SnapshotMounter struct {
 	runtime ContainerRuntimeMounter
 
-	guard sync.Mutex
+	guard *semaphore.Weighted
 	// mapping from targets to key of read-only snapshots
 	targetRoSnapshotMap map[MountTarget]SnapshotKey
 	// reference counter of read-only snapshots
@@ -26,6 +26,7 @@ func NewMounter(runtime ContainerRuntimeMounter) *SnapshotMounter {
 		runtime:              runtime,
 		targetRoSnapshotMap:  make(map[MountTarget]SnapshotKey),
 		roSnapshotTargetsMap: make(map[SnapshotKey]map[MountTarget]struct{}),
+		guard:                semaphore.NewWeighted(1),
 	}
 
 	mounter.buildSnapshotCacheOrDie()
@@ -46,8 +47,10 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 
 	mounter := k8smount.New("")
 
-	s.guard.Lock()
-	defer s.guard.Unlock()
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		klog.Fatalf("unable to acquire the lock: %s", err)
+	}
+	defer s.guard.Release(1)
 	for _, metadata := range snapshots {
 		key := metadata.GetSnapshotKey()
 		if key == "" {
@@ -99,8 +102,10 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 func (s *SnapshotMounter) refROSnapshot(
 	ctx context.Context, target MountTarget, imageID string, key SnapshotKey, metadata SnapshotMetadata,
 ) (err error) {
-	s.guard.Lock()
-	defer s.guard.Unlock()
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	defer s.guard.Release(1)
 
 	if s.targetRoSnapshotMap[target] != "" {
 		klog.Fatalf("target %q has already been mounted to snapshot %q", target, s.targetRoSnapshotMap[target])
@@ -127,8 +132,10 @@ func (s *SnapshotMounter) refROSnapshot(
 }
 
 func (s *SnapshotMounter) unrefROSnapshot(ctx context.Context, target MountTarget) (found bool) {
-	s.guard.Lock()
-	defer s.guard.Unlock()
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		klog.Fatalf("unable to acquire the lock: %s", err)
+	}
+	defer s.guard.Release(1)
 
 	key := s.targetRoSnapshotMap[target]
 	if key == "" {

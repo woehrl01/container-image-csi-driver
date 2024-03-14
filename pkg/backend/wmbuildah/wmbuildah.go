@@ -2,9 +2,9 @@ package wmbuildah
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -14,24 +14,17 @@ import (
 	"github.com/containers/common/libimage"
 	"github.com/containers/image/v5/types"
 	"github.com/containers/storage"
-	"github.com/containers/storage/pkg/reexec"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend"
+	"golang.org/x/time/rate"
 	"k8s.io/klog/v2"
 	k8smount "k8s.io/mount-utils"
 )
 
-var (
-	buildAhPrepareSnapshot = "buildah-prepare-snapshot"
-)
-
-func init() {
-	reexec.Register(buildAhPrepareSnapshot, prepareSnapshotMain)
-}
-
 type snapshotMounter struct {
-	store     storage.Store
-	mountLock *sync.Mutex
-	mounter   k8smount.Interface
+	store       storage.Store
+	mountLock   *sync.Mutex
+	mounter     k8smount.Interface
+	rateLimiter *rate.Limiter
 }
 
 type Options struct {
@@ -41,6 +34,7 @@ type Options struct {
 func NewMounter(o *Options) backend.Mounter {
 
 	storageOptions, err := storage.DefaultStoreOptions()
+
 	if err != nil {
 		klog.Fatalf("unable to get default store options: %s", err)
 	}
@@ -51,13 +45,14 @@ func NewMounter(o *Options) backend.Mounter {
 	}
 
 	return backend.NewMounter(&snapshotMounter{
-		store:     store,
-		mounter:   k8smount.New(""),
-		mountLock: &sync.Mutex{},
+		store:       store,
+		mounter:     k8smount.New(""),
+		mountLock:   &sync.Mutex{},
+		rateLimiter: rate.NewLimiter(rate.Every(45*time.Second), 2),
 	})
 }
 
-func (s snapshotMounter) Mount(ctx context.Context, key backend.SnapshotKey, target backend.MountTarget, ro bool) error {
+func (s snapshotMounter) Mount(_ context.Context, key backend.SnapshotKey, target backend.MountTarget, ro bool) error {
 	s.mountLock.Lock()
 	defer s.mountLock.Unlock()
 
@@ -160,27 +155,26 @@ func (s snapshotMounter) PrepareRWSnapshot(
 	return s.prepareSnapshot(ctx, imageID, key, metadata)
 }
 
-func prepareSnapshotMain() {
-	// this is executed in a child process as it sometimes leaks memory
-	// and it should also not be cancelled by the parent process
-	flag.Parse()
-	if len(flag.Args()) != 3 {
-		klog.Fatal("usage: buildah-prepare-snapshot <image> <container> <metadata>")
+func (s snapshotMounter) prepareSnapshot(_ context.Context,
+	imageID string, key backend.SnapshotKey, metadata backend.SnapshotMetadata,
+) error {
+	var metaString string
+	if metadata != nil {
+		metaString = metadata.Encode()
 	}
 
-	defaultOptions, err := storage.DefaultStoreOptions()
-	if err != nil {
-		klog.Fatalf("unable to get default store options: %s", err)
+	r := s.rateLimiter.Reserve()
+	if !r.OK() {
+		klog.Infof("could not reserve a rate limit for snapshot %q", key)
+		return fmt.Errorf("not able to reserve rate limit")
+	} else if r.Delay() > 0 {
+		klog.Infof("rate limit reached during snapshot %q, waiting for %s", key, r.Delay())
+		time.Sleep(r.Delay())
 	}
 
-	store, err := storage.GetStore(defaultOptions)
-	if err != nil {
-		klog.Fatalf("unable to create image store: %s", err)
-	}
-
-	builder, err := buildah.NewBuilder(context.Background(), store, buildah.BuilderOptions{
-		FromImage:  flag.Arg(0),
-		Container:  flag.Arg(1),
+	builder, err := buildah.NewBuilder(context.Background(), s.store, buildah.BuilderOptions{
+		FromImage:  imageID,
+		Container:  string(key),
 		PullPolicy: buildah.PullNever,
 	})
 
@@ -195,38 +189,16 @@ func prepareSnapshotMain() {
 			}
 		}
 	}()
-	
-	builder.SetLabel(labelLabel, flag.Arg(2))
+
+	builder.SetLabel(labelLabel, metaString)
 	_, err = builder.Mount("")
 	if err != nil {
-		klog.Fatalf("unable to mount snapshot %q: %s", flag.Arg(1), err)
+		klog.Errorf("unable to mount snapshot %q: %s", string(key), err)
+		return err
 	}
 	err = builder.Save()
 	if err != nil {
-		klog.Fatalf("unable to save snapshot %q: %s", flag.Arg(1), err)
-	}
-	os.Exit(0)
-}
-
-func (s snapshotMounter) prepareSnapshot(_ context.Context,
-	imageID string, key backend.SnapshotKey, metadata backend.SnapshotMetadata,
-) error {
-	var metaString string
-	if metadata != nil {
-		metaString = metadata.Encode()
-	}
-
-	cmd := reexec.Command(buildAhPrepareSnapshot, imageID, string(key), metaString)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Start()
-	if err != nil {
-		klog.Errorf("unable to start prepare snapshot %q: %s", key, err)
-		return err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		klog.Errorf("unable to prepare snapshot %q: %s", key, err)
+		klog.Errorf("unable to save snapshot %q: %s", string(key), err)
 		return err
 	}
 
@@ -269,14 +241,22 @@ func (s snapshotMounter) DestroySnapshot(ctx context.Context, key backend.Snapsh
 		return err
 	}
 
-	err = builder.Unmount()
+	isMounted, err := builder.Mounted()
 	if err != nil {
-		klog.Errorf("unable to unmount snapshot %q: %s", key, err)
+		klog.Errorf("unable to check if snapshot %q is mounted: %s", key, err)
 		return err
 	}
 
+	if isMounted {
+		err = builder.Unmount()
+		if err != nil {
+			klog.Errorf("unable to unmount snapshot %q: %s", key, err)
+			return err
+		}
+	}
+
 	err = builder.Delete()
-	if err != nil {
+	if err != nil && !errors.Is(err, storage.ErrNotAContainer) {
 		klog.Errorf("unable to destroy snapshot %q: %s", key, err)
 		return err
 	}

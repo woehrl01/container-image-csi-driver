@@ -184,8 +184,6 @@ func main() {
 			NewNodeServer(driver, mounter, criClient, secretStore, &Options{
 				AsyncImagePullTimeout: *asyncImagePullTimeout,
 				AsyncCannelSize:       *asyncChannelSize,
-				AsyncRateLimit:        *asyncRateLimit,
-				AsyncRateBurst:        *asyncRateBurst,
 			}))
 	case controllerMode:
 		watcher, err := watcher.New(context.Background(), *watcherResyncPeriod)
