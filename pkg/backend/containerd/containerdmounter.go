@@ -52,7 +52,7 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie(timeout time.Duration) {
 
 		for target := range metadata.GetTargets() {
 			if notMount, err := mounter.IsLikelyNotMountPoint(string(target)); err != nil || notMount {
-				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q",
+				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q", target,
 					key)
 
 				_ = s.runtime.RemoveLease(ctx, string(target))

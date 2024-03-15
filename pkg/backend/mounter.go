@@ -71,7 +71,7 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 			// FIXME Considering using checksum of target instead to shorten metadata.
 			// But the mountpoint checking become unavailable any more.
 			if notMount, err := mounter.IsLikelyNotMountPoint(string(target)); err != nil || notMount {
-				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q",
+				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q", target,
 					key)
 				delete(targets, target)
 				continue
