@@ -8,7 +8,6 @@ import (
 
 	"github.com/containerd/containerd/reference/docker"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend"
-	"golang.org/x/time/rate"
 	"k8s.io/klog/v2"
 	k8smount "k8s.io/utils/mount"
 )
@@ -16,23 +15,12 @@ import (
 type SnapshotMounter struct {
 	runtime       backend.ContainerRuntimeMounter
 	guard         *sync.Mutex
-	mountlimiter  *rate.Limiter
-	umountlimiter *rate.Limiter
 }
 
 func NewContainerdMounter(runtime backend.ContainerRuntimeMounter, o *Options) *SnapshotMounter {
-	if o.MountRate <= 0 || o.MountBurst <= 0 || o.UmountRate <= 0 || o.UmountBurst <= 0 {
-		klog.Fatalf("invalid rate or burst limit: %+v", o)
-	}
-
 	mounter := &SnapshotMounter{
 		runtime: runtime,
 		guard:   &sync.Mutex{},
-		// we need to limit the rate of mount and unmount to avoid the system being overwhelmed
-		// because the mount operation is causing way more load than the unmount operation on containerd
-		// we are using different limits for mount and unmount
-		mountlimiter:  rate.NewLimiter(rate.Limit(o.MountRate), o.MountBurst),
-		umountlimiter: rate.NewLimiter(rate.Limit(o.UmountRate), o.UmountBurst),
 	}
 
 	mounter.buildSnapshotCacheOrDie(o.StartupTimeout)
@@ -107,14 +95,6 @@ func buildSnapshotMetaData() backend.SnapshotMetadata {
 func (s *SnapshotMounter) Mount(
 	ctx context.Context, volumeId string, target backend.MountTarget, image docker.Named, ro bool) (err error) {
 
-	r := s.mountlimiter.Reserve()
-	if !r.OK() {
-		return fmt.Errorf("not able to reserve rate limit")
-	} else if r.Delay() > 0 {
-		klog.Infof("rate limit reached during mount, waiting for %s", r.Delay())
-		time.Sleep(r.Delay())
-	}
-
 	leaseCtx, err := s.runtime.AddLeaseToContext(ctx, string(target))
 	if err != nil {
 		return err
@@ -155,14 +135,6 @@ func (s *SnapshotMounter) Mount(
 }
 
 func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target backend.MountTarget, force bool) error {
-	r := s.umountlimiter.Reserve()
-	if !r.OK() {
-		return fmt.Errorf("not able to reserve rate limit")
-	} else if r.Delay() > 0 {
-		klog.Infof("rate limit reached during umount, waiting for %s", r.Delay())
-		time.Sleep(r.Delay())
-	}
-
 	klog.Infof("unmount volume %q at %q", volumeId, target)
 	if err := s.runtime.Unmount(ctx, target, force); err != nil {
 		if !force {

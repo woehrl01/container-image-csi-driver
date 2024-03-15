@@ -30,10 +30,6 @@ type snapshotMounter struct {
 
 type Options struct {
 	SocketPath     string
-	MountRate      int
-	UmountRate     int
-	MountBurst     int
-	UmountBurst    int
 	StartupTimeout time.Duration
 }
 

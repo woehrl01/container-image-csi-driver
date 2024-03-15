@@ -63,10 +63,6 @@ var (
 	watcherResyncPeriod      = flag.Duration("watcher-resync-period", 30*time.Minute, "The resync period of the pvc watcher.")
 	mode                     = flag.String("mode", "", "The mode of the driver. Valid values are: node, controller")
 	nodePluginSA             = flag.String("node-plugin-sa", "csi-image-warm-metal", "The name of the ServiceAccount used by the node plugin.")
-	containerDMountRate      = flag.Int("containerd-mount-rate", 5, "The rate limit of containerd mount operations per second.")
-	containerDUmountRate     = flag.Int("containerd-umount-rate", 10, "The rate limit of containerd umount operations per second.")
-	containerDMountBurst     = flag.Int("containerd-mount-burst", 5, "The burst of containerd mount operations.")
-	containerDUmountBurst    = flag.Int("containerd-umount-burst", 10, "The burst of containerd umount operations.")
 	contaienrDStartupTimeout = flag.Duration("containerd-startup-timeout", 20*time.Second, "The timeout for containerd startup.")
 	asyncChannelSize         = flag.Int("async-channel-size", 100, "The size of the async image pull channel.")
 	enablePprof              = flag.Bool("enable-pprof", true, "Enable pprof for the driver.")
@@ -137,10 +133,6 @@ func main() {
 			case containerdScheme:
 				mounter = containerd.NewMounter(&containerd.Options{
 					SocketPath:     addr.Path,
-					MountRate:      *containerDMountRate,
-					MountBurst:     *containerDMountBurst,
-					UmountRate:     *containerDUmountRate,
-					UmountBurst:    *containerDUmountBurst,
 					StartupTimeout: *contaienrDStartupTimeout,
 				})
 

@@ -296,10 +296,6 @@ func TestMetrics(t *testing.T) {
 
 	mounter := containerd.NewMounter(&containerd.Options{
 		SocketPath:  addr.Path,
-		MountRate:   10,
-		MountBurst:  10,
-		UmountRate:  10,
-		UmountBurst: 10,
 	})
 	assert.NotNil(t, mounter)
 
