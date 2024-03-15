@@ -46,7 +46,6 @@ func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSv
 		asyncImagePuller:      nil,
 		k8smounter:            k8smount.New(""),
 		volumeLocks:           utils.NewNamedLocks(),
-		imageLocks:            utils.NewNamedLocks(),
 	}
 	if o.AsyncImagePullTimeout >= time.Duration(30*time.Second) {
 		klog.Infof("Starting node server in Async mode with %v timeout", asyncImagePullTimeout)
@@ -67,7 +66,6 @@ type NodeServer struct {
 	asyncImagePuller      remoteimageasync.AsyncPuller
 	k8smounter            k8smount.Interface
 	volumeLocks           *utils.NamedLocks
-	imageLocks            *utils.NamedLocks
 }
 
 func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (resp *csi.NodePublishVolumeResponse, err error) {

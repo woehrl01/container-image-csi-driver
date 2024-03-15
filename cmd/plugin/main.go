@@ -11,12 +11,10 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/containers/buildah"
 	flag "github.com/spf13/pflag"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend/containerd"
 	"github.com/warm-metal/container-image-csi-driver/pkg/backend/crio"
-	"github.com/warm-metal/container-image-csi-driver/pkg/backend/wmbuildah"
 	"github.com/warm-metal/container-image-csi-driver/pkg/cri"
 	"github.com/warm-metal/container-image-csi-driver/pkg/metrics"
 	"github.com/warm-metal/container-image-csi-driver/pkg/secret"
@@ -32,7 +30,6 @@ const (
 
 	containerdScheme = "containerd"
 	criOScheme       = "cri-o"
-	buildahScheme    = "buildah"
 
 	nodeMode       = "node"
 	controllerMode = "controller"
@@ -69,10 +66,6 @@ var (
 )
 
 func main() {
-	if buildah.InitReexec() {
-		return
-	}
-
 	klog.InitFlags(nil)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	if err := flag.Set("logtostderr", "true"); err != nil {
@@ -152,14 +145,6 @@ func main() {
 				criClient, err = cri.NewRemoteImageService(*runtimeAddr, time.Second)
 				if err != nil {
 					klog.Fatalf(`unable to connect to cri daemon "%s": %s`, *endpoint, err)
-				}
-
-			case buildahScheme:
-
-				mounter = wmbuildah.NewMounter(&wmbuildah.Options{})
-				criClient, err = cri.NewRemoteImageServiceBuildah(time.Second)
-				if err != nil {
-					klog.Fatalf(`unable to setup buildah: %s`, err)
 				}
 			default:
 				klog.Fatalf("unknown container runtime %q", addr.Scheme)

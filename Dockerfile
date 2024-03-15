@@ -1,5 +1,5 @@
 FROM docker.io/library/golang:1.22.1-alpine3.19 as builder
-RUN apk add --no-cache btrfs-progs-dev lvm2-dev make build-base gpgme-dev
+RUN apk add --no-cache btrfs-progs-dev lvm2-dev make
 WORKDIR /go/src/container-image-csi-driver
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,7 +13,7 @@ FROM scratch as install-util
 COPY --from=builder /go/src/container-image-csi-driver/_output/warm-metal-csi-image-install /
 
 FROM alpine:3.19
-RUN apk add --no-cache btrfs-progs-dev lvm2-dev gpgme-dev netavark skopeo
+RUN apk add --no-cache btrfs-progs-dev lvm2-dev
 WORKDIR /
 COPY --from=builder /go/src/container-image-csi-driver/_output/csi-image-plugin /usr/bin/
 ENTRYPOINT ["csi-image-plugin"]

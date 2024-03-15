@@ -123,10 +123,6 @@ spec:
             - mountPath: {{ .Values.crioMountProgram }}
               name: crio-mount-program
             {{- end }}
-            {{- if eq .Values.runtime.engine "buildah" }}
-            - mountPath: /run/containers/storage
-              name: storagerunroot-dir
-            {{- end }}
       hostNetwork: {{.Values.csiPlugin.hostNetwork}}
       serviceAccountName: {{ include "warm-metal-csi-driver.fullname" . }}-nodeplugin
       volumes:
@@ -162,12 +158,6 @@ spec:
             path: {{ .Values.snapshotRoot }}
             type: DirectoryOrCreate
           name: snapshot-root-0
-        {{- if eq .Values.runtime.engine "buildah" }}
-        - hostPath:
-            path: /run/containers/storage
-            type: DirectoryOrCreate
-          name: storagerunroot-dir
-        {{- end }}
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
