@@ -13,11 +13,11 @@ import (
 )
 
 type SnapshotMounter struct {
-	runtime       backend.ContainerRuntimeMounter
-	guard         *sync.Mutex
+	runtime backend.ContainerRuntimeMounterContainerD
+	guard   *sync.Mutex
 }
 
-func NewContainerdMounter(runtime backend.ContainerRuntimeMounter, o *Options) *SnapshotMounter {
+func NewContainerdMounter(runtime backend.ContainerRuntimeMounterContainerD, o *Options) *SnapshotMounter {
 	mounter := &SnapshotMounter{
 		runtime: runtime,
 		guard:   &sync.Mutex{},
@@ -35,7 +35,7 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie(timeout time.Duration) {
 		klog.Fatalf("unable to migrate old snapshot format: %s", err)
 	}
 
-	snapshots, err := s.runtime.ListSnapshots(ctx)
+	snapshots, err := s.runtime.ListSnapshotsWithFilter(ctx, managedFilter)
 	if err != nil {
 		klog.Fatalf("unable to list snapshots: %s", err)
 	}
@@ -147,7 +147,7 @@ func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target b
 }
 
 func (s *SnapshotMounter) ImageExists(ctx context.Context, image docker.Named) bool {
-	return s.runtime.ImageExists(ctx, image)
+	return s.runtime.ImageExists(ctx, image.String())
 }
 
 func GenSnapshotKey(parent string) backend.SnapshotKey {

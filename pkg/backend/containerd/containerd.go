@@ -88,19 +88,16 @@ func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget, 
 	return nil
 }
 
-func (s snapshotMounter) ImageExists(ctx context.Context, image docker.Named) bool {
-	_, err := s.cli.GetImage(ctx, image.String())
+func (s snapshotMounter) ImageExists(ctx context.Context, image string) bool {
+	_, err := s.cli.GetImage(ctx, image)
 	return err == nil
 }
 
-func (s snapshotMounter) GetImageIDOrDie(ctx context.Context, image docker.Named) string {
-	return s.getImageIDOrDieByName(ctx, image.String())
-}
-
-func (s snapshotMounter) getImageIDOrDieByName(ctx context.Context, image string) string {
+func (s snapshotMounter) GetImageID(ctx context.Context, image string) (string, error) {
 	localImage, err := s.cli.GetImage(ctx, image)
 	if err != nil {
-		klog.Fatalf("unable to retrieve local image %q: %s", image, err)
+		klog.Errorf("unable to retrieve local image %q: %s", image, err)
+		return "", err
 	}
 
 	isUnpacked, err := localImage.IsUnpacked(ctx, "")
@@ -122,7 +119,7 @@ func (s snapshotMounter) getImageIDOrDieByName(ctx context.Context, image string
 		klog.Fatalf("unable to fetch rootfs of image %q: %s", image, err)
 	}
 
-	return identity.ChainID(diffIDs).String()
+	return identity.ChainID(diffIDs).String(), nil
 }
 
 func (s snapshotMounter) AddLeaseToContext(ctx context.Context, target string) (context.Context, error) {
@@ -166,10 +163,13 @@ func (s snapshotMounter) PrepareReadOnlySnapshot(
 
 	labels := defaultSnapshotLabels()
 
-	parent := s.getImageIDOrDieByName(ctx, image)
+	parent, err := s.GetImageID(ctx, image)
+	if err != nil {
+		return err
+	}
 
 	klog.Infof("create ro snapshot %q for image %q with metadata %#v", key, image, labels)
-	_, err := s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
+	_, err = s.FindSnapshot(ctx, string(key), parent, snapshots.KindView, labels)
 	if err != nil {
 		return err
 	}
@@ -194,10 +194,13 @@ func (s snapshotMounter) PrepareRWSnapshot(
 	defer snapshotter.Close()
 
 	labels := defaultSnapshotLabels()
-	parent := s.getImageIDOrDieByName(ctx, image)
+	parent, err := s.GetImageID(ctx, image)
+	if err != nil {
+		return err
+	}
 
 	klog.Infof("create rw snapshot %q for image %q with metadata %#v", key, parent, labels)
-	_, err := s.FindSnapshot(ctx, string(key), parent, snapshots.KindActive, labels)
+	_, err = s.FindSnapshot(ctx, string(key), parent, snapshots.KindActive, labels)
 	if err != nil {
 		return err
 	}
@@ -330,10 +333,6 @@ func (s snapshotMounter) MigrateOldSnapshotFormat(ctx context.Context) error {
 	}
 
 	return err
-}
-
-func (s snapshotMounter) ListSnapshots(ctx context.Context) ([]backend.SnapshotMetadata, error) {
-	return s.ListSnapshotsWithFilter(ctx, managedFilter)
 }
 
 func (s snapshotMounter) ListSnapshotsWithFilter(ctx context.Context, filters ...string) ([]backend.SnapshotMetadata, error) {

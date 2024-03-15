@@ -295,7 +295,7 @@ func TestMetrics(t *testing.T) {
 	assert.NotNil(t, criClient)
 
 	mounter := containerd.NewMounter(&containerd.Options{
-		SocketPath:  addr.Path,
+		SocketPath: addr.Path,
 	})
 	assert.NotNil(t, mounter)
 
