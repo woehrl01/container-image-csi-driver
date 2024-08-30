@@ -61,6 +61,9 @@ func (r *remoteImageServiceContainerd) PullImage(ctx context.Context, in *cri.Pu
 	resolver := docker.NewResolver(docker.ResolverOptions{
 		Authorizer: docker.NewDockerAuthorizer(
 			docker.WithAuthCreds(func(host string) (string, string, error) {
+				if in.Auth == nil {
+					return "", "", nil
+				}
 				return in.Auth.Username, in.Auth.Password, nil
 			}),
 		),
