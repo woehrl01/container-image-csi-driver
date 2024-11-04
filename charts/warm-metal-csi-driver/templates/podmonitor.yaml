@@ -1,4 +1,4 @@
-{{- if or (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1alpha1") }}
+{{- if and .Values.podMonitor.enabled (or (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1alpha1")) }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
