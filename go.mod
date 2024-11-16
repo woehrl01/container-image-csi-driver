@@ -1,6 +1,6 @@
 module github.com/warm-metal/container-image-csi-driver
 
-go 1.22.5
+go 1.23.3
 
 require (
 	github.com/BurntSushi/toml v1.3.2
