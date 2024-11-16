@@ -390,7 +390,7 @@ func (s snapshotMounter) ListSnapshotsWithFilter(ctx context.Context, filters ..
 }
 
 const (
-	labelPrefix   = "csi-image.warm-metal.tech"
+	labelPrefix   = "container-image.csi.k8s.io"
 	typeLabel     = labelPrefix + "/type"
 	managedFilter = "labels.\"" + typeLabel + "\"==lease-only"
 

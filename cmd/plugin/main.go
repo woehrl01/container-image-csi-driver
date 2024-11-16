@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	driverName    = "csi-image.warm-metal.tech"
+	driverName    = "container-image.csi.k8s.io"
 	driverVersion = "v1.0.0"
 
 	containerdScheme = "containerd"
