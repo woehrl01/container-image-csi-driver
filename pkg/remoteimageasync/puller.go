@@ -26,6 +26,7 @@ func RunPullerLoop(
 				return
 			}
 			go func() {
+				defer completedFunc(ses)
 				klog.V(2).Infof("%s.RunPullerLoop(): asked to pull image %s with timeout %v\n",
 					prefix, ses.ImageWithTag(), ses.timeout)
 				ctxAsyncPullTimeoutOrShutdown, cancelDontCare := context.WithTimeout(ctx, ses.timeout) // combine session timeout and shut down signal into one
@@ -53,7 +54,6 @@ func RunPullerLoop(
 					}
 				}
 				close(ses.done) // signal done, all waiters should wake
-				completedFunc(ses)
 			}()
 		}
 	}()

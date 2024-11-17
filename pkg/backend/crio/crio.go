@@ -22,8 +22,12 @@ type snapshotMounter struct {
 	imageStore storage.Store
 }
 
-func NewMounter(socketPath string) *backend.SnapshotMounter {
-	store, err := storage.GetStore(fetchCriOConfigOrDie(socketPath))
+type Options struct {
+	SocketPath string
+}
+
+func NewMounter(o *Options) *backend.SnapshotMounter {
+	store, err := storage.GetStore(fetchCriOConfigOrDie(o.SocketPath))
 	if err != nil {
 		klog.Fatalf("unable to create image store: %s", err)
 	}
@@ -53,10 +57,20 @@ func (s snapshotMounter) Mount(_ context.Context, key backend.SnapshotKey, targe
 	return nil
 }
 
-func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget) error {
+func (s snapshotMounter) AddLeaseToContext(ctx context.Context, target string) (context.Context, error) {
+	return ctx, nil
+}
+
+func (s snapshotMounter) RemoveLease(ctx context.Context, target string) error {
+	return nil
+}
+
+func (s snapshotMounter) Unmount(_ context.Context, target backend.MountTarget, force bool) error {
 	if err := k8smount.New("").Unmount(string(target)); err != nil {
 		klog.Errorf("unable to unmount %q: %s", target, err)
-		return err
+		if !force {
+			return err
+		}
 	}
 
 	return nil
@@ -174,6 +188,14 @@ func (s snapshotMounter) DestroySnapshot(_ context.Context, key backend.Snapshot
 	}
 
 	return nil
+}
+
+func (s snapshotMounter) MigrateOldSnapshotFormat(_ context.Context) error {
+	return nil
+}
+
+func (s snapshotMounter) ListSnapshotsWithFilter(context.Context, ...string) ([]backend.SnapshotMetadata, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (s snapshotMounter) ListSnapshots(context.Context) (ss []backend.SnapshotMetadata, err error) {

@@ -59,6 +59,13 @@ func (s synchronizer) StartPull(image string, puller remoteimage.Puller, asyncPu
 			err:        nil,
 		}
 
+		go func() {
+			<-time.After(ses.timeout) // wait for timeout
+			s.mutex.Lock()
+			defer s.mutex.Unlock()
+			delete(s.sessionMap, image) // clean up session map if timed out
+		}()
+
 		defer func() {
 			if rec := recover(); rec != nil { // handle session write panic due to closed sessionChan
 				// override named return values

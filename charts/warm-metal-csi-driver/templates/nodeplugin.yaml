@@ -17,6 +17,9 @@ spec:
       labels:
         {{- include "warm-metal-csi-driver.nodeplugin.labels" . | nindent 8 }}
     spec:
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
       containers:
         - name: node-driver-registrar
           args:
@@ -46,6 +49,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--http-endpoint=:9809"
+            - "--probe-timeout=3s"
             - "-v={{ .Values.logLevel }}"
           {{- with .Values.csiLivenessProbe.resources }}
           resources:
@@ -65,9 +69,13 @@ spec:
             {{- end }}
             {{- if .Values.enableAsyncPull }}
             - --async-pull-timeout={{ .Values.asyncPullTimeout }}
+            - --async-channel-size={{ .Values.asyncChannelSize }}
             {{- end }}
             - "-v={{ .Values.logLevel }}"
             - "--mode=node"
+            {{- if eq .Values.runtime.engine "containerd" }}
+            - "--containerd-startup-timeout={{ .Values.containerd.startupTimeout }}"
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -148,9 +156,14 @@ spec:
         {{- end }}
         - hostPath:
             path: {{ .Values.snapshotRoot }}
-            type: Directory
+            type: DirectoryOrCreate
           name: snapshot-root-0
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+

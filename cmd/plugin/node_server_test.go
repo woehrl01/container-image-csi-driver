@@ -42,7 +42,7 @@ func TestNodePublishVolumeAsync(t *testing.T) {
 	assert.NotNil(t, driver)
 
 	asyncImagePulls := 15 * time.Minute //TODO: determine intended value for this in the context of this test
-	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, asyncImagePulls)
+	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, &Options{AsyncImagePullTimeout: asyncImagePulls, AsyncCannelSize: 100})
 
 	// based on kubelet's csi mounter plugin code
 	// check https://github.com/kubernetes/kubernetes/blob/b06a31b87235784bad2858be62115049b6eb6bcd/pkg/volume/csi/csi_mounter.go#L111-L112
@@ -150,7 +150,7 @@ func TestNodePublishVolumeAsync(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(target))
+	err = mounter.Unmount(c, volId, backend.MountTarget(target), false)
 	assert.NoError(t, err)
 }
 
@@ -169,7 +169,7 @@ func TestNodePublishVolumeSync(t *testing.T) {
 	assert.NotNil(t, driver)
 
 	asyncImagePulls := 0 * time.Minute //TODO: determine intended value for this in the context of this test
-	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, asyncImagePulls)
+	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, &Options{AsyncImagePullTimeout: asyncImagePulls, AsyncCannelSize: 100})
 
 	// based on kubelet's csi mounter plugin code
 	// check https://github.com/kubernetes/kubernetes/blob/b06a31b87235784bad2858be62115049b6eb6bcd/pkg/volume/csi/csi_mounter.go#L111-L112
@@ -279,7 +279,7 @@ func TestNodePublishVolumeSync(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(target))
+	err = mounter.Unmount(c, volId, backend.MountTarget(target), false)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "not found")
 }
@@ -294,14 +294,16 @@ func TestMetrics(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, criClient)
 
-	mounter := containerd.NewMounter(addr.Path)
+	mounter := containerd.NewMounter(&containerd.Options{
+		SocketPath: addr.Path,
+	})
 	assert.NotNil(t, mounter)
 
 	driver := csicommon.NewCSIDriver(driverName, driverVersion, "fake-node")
 	assert.NotNil(t, driver)
 
 	asyncImagePulls := 15 * time.Minute //TODO: determine intended value for this in the context of this test
-	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, asyncImagePulls)
+	ns := NewNodeServer(driver, mounter, criClient, &testSecretStore{}, &Options{AsyncImagePullTimeout: asyncImagePulls, AsyncCannelSize: 100})
 
 	// based on kubelet's csi mounter plugin code
 	// check https://github.com/kubernetes/kubernetes/blob/b06a31b87235784bad2858be62115049b6eb6bcd/pkg/volume/csi/csi_mounter.go#L111-L112
@@ -447,7 +449,7 @@ func TestMetrics(t *testing.T) {
 	c, ca := context.WithTimeout(context.Background(), time.Second*10)
 	defer ca()
 
-	err = mounter.Unmount(c, volId, backend.MountTarget(targetPath))
+	err = mounter.Unmount(c, volId, backend.MountTarget(targetPath), false)
 	assert.NoError(t, err)
 }
 

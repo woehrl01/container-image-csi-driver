@@ -3,10 +3,10 @@ package backend
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/containerd/containerd/reference/docker"
+	"golang.org/x/sync/semaphore"
 	"k8s.io/klog/v2"
 	k8smount "k8s.io/utils/mount"
 )
@@ -14,7 +14,7 @@ import (
 type SnapshotMounter struct {
 	runtime ContainerRuntimeMounter
 
-	guard sync.Mutex
+	guard *semaphore.Weighted
 	// mapping from targets to key of read-only snapshots
 	targetRoSnapshotMap map[MountTarget]SnapshotKey
 	// reference counter of read-only snapshots
@@ -26,6 +26,7 @@ func NewMounter(runtime ContainerRuntimeMounter) *SnapshotMounter {
 		runtime:              runtime,
 		targetRoSnapshotMap:  make(map[MountTarget]SnapshotKey),
 		roSnapshotTargetsMap: make(map[SnapshotKey]map[MountTarget]struct{}),
+		guard:                semaphore.NewWeighted(1),
 	}
 
 	mounter.buildSnapshotCacheOrDie()
@@ -46,8 +47,10 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 
 	mounter := k8smount.New("")
 
-	s.guard.Lock()
-	defer s.guard.Unlock()
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		klog.Fatalf("unable to acquire the lock: %s", err)
+	}
+	defer s.guard.Release(1)
 	for _, metadata := range snapshots {
 		key := metadata.GetSnapshotKey()
 		if key == "" {
@@ -68,7 +71,7 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 			// FIXME Considering using checksum of target instead to shorten metadata.
 			// But the mountpoint checking become unavailable any more.
 			if notMount, err := mounter.IsLikelyNotMountPoint(string(target)); err != nil || notMount {
-				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q",
+				klog.Errorf("target %q is not a mountpoint yet. trying to release the ref of snapshot %q", target,
 					key)
 				delete(targets, target)
 				continue
@@ -99,8 +102,10 @@ func (s *SnapshotMounter) buildSnapshotCacheOrDie() {
 func (s *SnapshotMounter) refROSnapshot(
 	ctx context.Context, target MountTarget, imageID string, key SnapshotKey, metadata SnapshotMetadata,
 ) (err error) {
-	s.guard.Lock()
-	defer s.guard.Unlock()
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	defer s.guard.Release(1)
 
 	if s.targetRoSnapshotMap[target] != "" {
 		klog.Fatalf("target %q has already been mounted to snapshot %q", target, s.targetRoSnapshotMap[target])
@@ -126,9 +131,12 @@ func (s *SnapshotMounter) refROSnapshot(
 	return nil
 }
 
-func (s *SnapshotMounter) unrefROSnapshot(ctx context.Context, target MountTarget) (found bool) {
-	s.guard.Lock()
-	defer s.guard.Unlock()
+func (s *SnapshotMounter) unrefROSnapshot(parentCtx context.Context, target MountTarget) (found bool) {
+	ctx := context.WithoutCancel(parentCtx) // we don't want to cancel the unref operation
+	if err := s.guard.Acquire(ctx, 1); err != nil {
+		klog.Fatalf("unable to acquire the lock: %s", err)
+	}
+	defer s.guard.Release(1)
 
 	key := s.targetRoSnapshotMap[target]
 	if key == "" {
@@ -207,9 +215,9 @@ func (s *SnapshotMounter) Mount(
 	return err
 }
 
-func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target MountTarget) error {
+func (s *SnapshotMounter) Unmount(ctx context.Context, volumeId string, target MountTarget, force bool) error {
 	klog.Infof("unmount volume %q at %q", volumeId, target)
-	if err := s.runtime.Unmount(ctx, target); err != nil {
+	if err := s.runtime.Unmount(ctx, target, force); err != nil {
 		return err
 	}
 

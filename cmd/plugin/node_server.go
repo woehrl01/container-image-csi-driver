@@ -13,6 +13,7 @@ import (
 	"github.com/warm-metal/container-image-csi-driver/pkg/remoteimage"
 	"github.com/warm-metal/container-image-csi-driver/pkg/remoteimageasync"
 	"github.com/warm-metal/container-image-csi-driver/pkg/secret"
+	"github.com/warm-metal/container-image-csi-driver/pkg/utils"
 	csicommon "github.com/warm-metal/csi-drivers/pkg/csi-common"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,18 +31,25 @@ const (
 
 type ImagePullStatus int
 
-func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSvc cri.ImageServiceClient, secretStore secret.Store, asyncImagePullTimeout time.Duration) *NodeServer {
+type Options struct {
+	AsyncImagePullTimeout time.Duration
+	AsyncCannelSize       int
+}
+
+func NewNodeServer(driver *csicommon.CSIDriver, mounter backend.Mounter, imageSvc cri.ImageServiceClient, secretStore secret.Store, o *Options) *NodeServer {
 	ns := NodeServer{
 		DefaultNodeServer:     csicommon.NewDefaultNodeServer(driver),
 		mounter:               mounter,
 		imageSvc:              imageSvc,
 		secretStore:           secretStore,
-		asyncImagePullTimeout: asyncImagePullTimeout,
+		asyncImagePullTimeout: o.AsyncImagePullTimeout,
 		asyncImagePuller:      nil,
+		k8smounter:            k8smount.New(""),
+		volumeLocks:           utils.NewNamedLocks(),
 	}
-	if asyncImagePullTimeout >= time.Duration(30*time.Second) {
+	if o.AsyncImagePullTimeout >= time.Duration(30*time.Second) {
 		klog.Infof("Starting node server in Async mode with %v timeout", asyncImagePullTimeout)
-		ns.asyncImagePuller = remoteimageasync.StartAsyncPuller(context.TODO(), 100)
+		ns.asyncImagePuller = remoteimageasync.StartAsyncPuller(context.TODO(), o.AsyncCannelSize)
 	} else {
 		klog.Info("Starting node server in Sync mode")
 		ns.asyncImagePullTimeout = 0 // set to default value
@@ -56,6 +64,8 @@ type NodeServer struct {
 	secretStore           secret.Store
 	asyncImagePullTimeout time.Duration
 	asyncImagePuller      remoteimageasync.AsyncPuller
+	k8smounter            k8smount.Interface
+	volumeLocks           *utils.NamedLocks
 }
 
 func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (resp *csi.NodePublishVolumeResponse, err error) {
@@ -93,7 +103,12 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 		return
 	}
 
-	notMnt, err := k8smount.New("").IsLikelyNotMountPoint(req.TargetPath)
+	if acquired := n.volumeLocks.TryAcquire(req.VolumeId); !acquired {
+		return nil, status.Errorf(codes.Aborted, utils.NamedOperationAlreadyExistsFmt, req.VolumeId)
+	}
+	defer n.volumeLocks.Release(req.VolumeId)
+
+	notMnt, err := n.k8smounter.IsLikelyNotMountPoint(req.TargetPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			err = status.Error(codes.Internal, err.Error())
@@ -109,6 +124,7 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 	}
 
 	if !notMnt {
+		klog.Infof("NodePublishVolume succeeded on volume %v to %s, mount already exists.", req.VolumeId, req.TargetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
@@ -150,6 +166,7 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 				metrics.OperationErrorsCount.WithLabelValues("pull-async-start").Inc()
 				return
 			}
+
 			if err = n.asyncImagePuller.WaitForPull(session, ctx); err != nil {
 				err = status.Errorf(codes.Aborted, "unable to pull image %q: %s", image, err)
 				metrics.OperationErrorsCount.WithLabelValues("pull-async-wait").Inc()
@@ -164,6 +181,8 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 		}
 	}
 
+	mountStartTime := time.Now()
+
 	ro := req.Readonly ||
 		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY ||
 		req.VolumeCapability.AccessMode.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY
@@ -172,14 +191,16 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishV
 		metrics.OperationErrorsCount.WithLabelValues("mount").Inc()
 		return
 	}
-
-	valuesLogger.Info("Successfully completed NodePublishVolume request", "request string", req.String())
+	mountDuration := time.Since(mountStartTime)
+	valuesLogger.Info("Successfully completed NodePublishVolume request", "request string", req.String(), "mountDuration", mountDuration.String())
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 func (n NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (resp *csi.NodeUnpublishVolumeResponse, err error) {
-	klog.Infof("unmount request: %s", req.String())
+	valuesLogger := klog.LoggerWithValues(klog.NewKlogr())
+	valuesLogger.Info("Incoming NodeUnpublishVolume request", "request string", req.String())
+
 	if len(req.VolumeId) == 0 {
 		err = status.Error(codes.InvalidArgument, "VolumeId is missing")
 		return
@@ -190,16 +211,30 @@ func (n NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpubl
 		return
 	}
 
-	mnt, err := k8smount.New("").IsMountPoint(req.TargetPath)
-	if err != nil || !mnt {
+	if acquired := n.volumeLocks.TryAcquire(req.VolumeId); !acquired {
+		return nil, status.Errorf(codes.Aborted, utils.NamedOperationAlreadyExistsFmt, req.VolumeId)
+	}
+	defer n.volumeLocks.Release(req.VolumeId)
+
+	unmountStartTime := time.Now()
+
+	mnt, err := n.k8smounter.IsMountPoint(req.TargetPath)
+	force := false
+	if !mnt || os.IsNotExist(err) {
+		force = true
+		klog.Warningf("mount cleanup skipped: %s is not a mount point", req.TargetPath)
+	} else if err != nil {
 		return &csi.NodeUnpublishVolumeResponse{}, err
 	}
 
-	if err = n.mounter.Unmount(ctx, req.VolumeId, backend.MountTarget(req.TargetPath)); err != nil {
+	if err = n.mounter.Unmount(ctx, req.VolumeId, backend.MountTarget(req.TargetPath), force); err != nil {
 		metrics.OperationErrorsCount.WithLabelValues("unmount").Inc()
-		err = status.Error(codes.Internal, err.Error())
-		return
+		return &csi.NodeUnpublishVolumeResponse{}, status.Error(codes.Internal, err.Error())
 	}
+
+	unmountDuration := time.Since(unmountStartTime)
+
+	valuesLogger.Info("Successfully completed NodeUnpublishVolume request", "request string", req.String(), "unmountDuration", unmountDuration.String())
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
