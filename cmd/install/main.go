@@ -41,7 +41,7 @@ func main() {
 	}
 
 	conf.EnableCache = *enableCache
-	conf.Image = fmt.Sprintf("%s/container-image-csi-driver:%s", Registry, Version)
+	conf.Image = fmt.Sprintf("%s/csi-image:%s", Registry, Version)
 
 	vols := detectImageSvcVolumes(conf.ImageSocketPath)
 	if len(vols) == 0 {
@@ -209,7 +209,7 @@ const staticManifests = `---
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: container-image.csi.k8s.io
+  name: csi-image.warm-metal.tech
 spec:
   attachRequired: false
   podInfoOnMount: true
@@ -223,7 +223,7 @@ const defaultSAManifests = `---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: container-image-csi-driver
+  name: csi-image-warm-metal
   namespace: kube-system
 ---
 `
@@ -232,13 +232,13 @@ const defaultRBACRoleManifests = `---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: container-image-csi-driver
+  name: csi-image-warm-metal
   namespace: kube-system
 rules:
   - apiGroups:
       - ""
     resourceNames:
-      - container-image-csi-driver
+      - csi-image-warm-metal
     resources:
       - serviceaccounts
     verbs:
@@ -250,15 +250,15 @@ const rbacRoleBindingManifests = `---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: container-image-csi-driver
+  name: csi-image-warm-metal
   namespace: kube-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: container-image-csi-driver
+  name: csi-image-warm-metal
 subjects:
   - kind: ServiceAccount
-    name: container-image-csi-driver
+    name: csi-image-warm-metal
     namespace: kube-system
 ---
 `
@@ -267,19 +267,19 @@ const dsTemplate = `---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: container-image-csi-driver
+  name: csi-image-warm-metal
   namespace: kube-system
 spec:
   selector:
     matchLabels:
-      app: container-image-csi-driver
+      app: csi-image-warm-metal
   template:
     metadata:
       labels:
-        app: container-image-csi-driver
+        app: csi-image-warm-metal
     spec:
       hostNetwork: false
-      serviceAccountName: container-image-csi-driver
+      serviceAccountName: csi-image-warm-metal
       containers:
         - name: node-driver-registrar
           image: quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
@@ -287,10 +287,10 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/container-image.csi.k8s.io /registration/container-image.csi.k8s.io-reg.sock"]
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi-image.warm-metal.tech /registration/csi-image.warm-metal.tech-reg.sock"]
           args:
             - --csi-address=/csi/csi.sock
-            - --kubelet-registration-path={{.KubeletRoot}}/plugins/container-image.csi.k8s.io/csi.sock
+            - --kubelet-registration-path={{.KubeletRoot}}/plugins/csi-image.warm-metal.tech/csi.sock
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -332,7 +332,7 @@ spec:
               name: runtime-socket
       volumes:
         - hostPath:
-            path: {{.KubeletRoot}}/plugins/container-image.csi.k8s.io
+            path: {{.KubeletRoot}}/plugins/csi-image.warm-metal.tech
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:

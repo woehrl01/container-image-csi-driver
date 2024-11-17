@@ -16,7 +16,7 @@ func (d driver) GetVolume(config *testsuites.PerTestConfig, volumeNumber int) (a
 }
 
 func (d driver) GetCSIDriverName(config *testsuites.PerTestConfig) string {
-	return "container-image.csi.k8s.io"
+	return "csi-image.warm-metal.tech"
 }
 
 func (d driver) GetPersistentVolumeSource(readOnly bool, fsType string, testVolume testsuites.TestVolume) (*v1.PersistentVolumeSource, *v1.VolumeNodeAffinity) {
@@ -26,7 +26,7 @@ func (d driver) GetPersistentVolumeSource(readOnly bool, fsType string, testVolu
 
 	return &v1.PersistentVolumeSource{
 			CSI: &v1.CSIPersistentVolumeSource{
-				Driver:       "container-image.csi.k8s.io",
+				Driver:       "csi-image.warm-metal.tech",
 				VolumeHandle: "docker.io/warmmetal/container-image-csi-driver-test:simple-fs",
 				ReadOnly:     true,
 			},
@@ -51,7 +51,7 @@ func (d driver) GetVolumeSource(readOnly bool, fsType string, testVolume testsui
 	ro := readOnly
 	return &v1.VolumeSource{
 		CSI: &v1.CSIVolumeSource{
-			Driver:   "container-image.csi.k8s.io",
+			Driver:   "csi-image.warm-metal.tech",
 			ReadOnly: &ro,
 			VolumeAttributes: map[string]string{
 				"image": "docker.io/warmmetal/container-image-csi-driver-test:simple-fs",
@@ -71,7 +71,7 @@ func (d driver) CreateVolume(config *testsuites.PerTestConfig, volumeType testpa
 
 func (d driver) GetDriverInfo() *testsuites.DriverInfo {
 	return &testsuites.DriverInfo{
-		Name: "container-image.csi.k8s.io",
+		Name: "csi-image.warm-metal.tech",
 		Capabilities: map[testsuites.Capability]bool{
 			testsuites.CapExec:             true,
 			testsuites.CapMultiPODs:        true,
@@ -100,14 +100,14 @@ func (d driver) SkipUnsupportedTest(pattern testpatterns.TestPattern) {
 
 	if !supported {
 		e2eskipper.Skipf("Driver %q does not support tests %q-%q-%q - skipping",
-			"container-image.csi.k8s.io", pattern.Name, pattern.VolType, pattern.VolMode)
+			"csi-image.warm-metal.tech", pattern.Name, pattern.VolType, pattern.VolMode)
 	}
 }
 
 func (d *driver) PrepareTest(f *framework.Framework) (*testsuites.PerTestConfig, func()) {
 	return &testsuites.PerTestConfig{
 		Driver:    d,
-		Prefix:    "container-image",
+		Prefix:    "csi-image",
 		Framework: f,
 	}, func() {}
 }
